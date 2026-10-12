@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs'
 import { readFile, rename, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, join } from 'node:path'
 import { extensionOf, OCR_LANGUAGES } from '@shared/tools'
-import type { OcrOptions, OcrOutput, OcrPage, OcrResult } from '@shared/types'
+import type { AiReport, AiRequest, OcrOptions, OcrOutput, OcrPage, OcrResult } from '@shared/types'
+import { AiError } from '../ai/client'
+import { refineBlocks } from '../ai/refine'
 import { CancelledError, EngineError } from '../errors'
 import { imageToPdf } from '../engines/convert/image'
 import { normalizeImage } from '../engines/convert/image'
@@ -10,9 +12,9 @@ import { overlayText, pagesToDocx, type PageOverlay } from '../engines/ocr/expor
 import { buildBlocks, pagesToMarkdown, pagesToText, textToBlocks } from '../engines/ocr/postprocess'
 import { openOcr, type OcrSession } from '../engines/ocr/recognize'
 import { openPdf } from '../engines/pdf/open'
-import { withDefaults, type ToolRunner } from './types'
+import { withDefaults, type ToolContext, type ToolRunner } from './types'
 
-const defaults: OcrOptions = { languages: ['deu', 'eng'], outputs: ['pdf', 'txt'], outputDir: null, skipTextPages: true }
+const defaults: OcrOptions = { languages: ['deu', 'eng'], outputs: ['pdf', 'txt'], outputDir: null, skipTextPages: true, useAi: false, ai: null }
 const OUTPUT_EXT: Record<OcrOutput, string> = { pdf: '.pdf', txt: '.txt', md: '.md', docx: '.docx' }
 const ORDER: OcrOutput[] = ['pdf', 'txt', 'md', 'docx']
 const WEAK = 70
@@ -42,6 +44,35 @@ function average(values: number[]): number | null {
   return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : null
 }
 
+async function refinePages(pages: OcrPage[], languages: string[], request: AiRequest, ctx: ToolContext, from: number): Promise<AiReport> {
+  const report: AiReport = { model: request.model, refined: [], skipped: [], failed: null }
+  const targets = pages.filter((page) => page.source === 'ocr' && page.blocks.length > 0)
+  for (let index = 0; index < targets.length; index += 1) {
+    const page = targets[index]
+    if (!page) continue
+    if (ctx.signal.aborted) throw new CancelledError()
+    ctx.progress(from + (index / targets.length) * (95 - from), targets.length > 1 ? `KI bereitet Seite ${page.number} auf` : 'KI bereitet den Text auf')
+    try {
+      const outcome = await refineBlocks(page.blocks, languages, request, request.model, ctx.signal)
+      if (outcome.accepted > 0) {
+        page.blocks = outcome.blocks
+        report.refined.push(page.number)
+      } else {
+        report.skipped.push(page.number)
+      }
+    } catch (error) {
+      if (ctx.signal.aborted) throw new CancelledError()
+      if (error instanceof AiError && (error.code === 'host' || error.code === 'unreachable' || error.code === 'status')) {
+        report.failed = error.message
+        report.skipped.push(...targets.slice(index).map((entry) => entry.number))
+        break
+      }
+      report.skipped.push(page.number)
+    }
+  }
+  return report
+}
+
 export const ocrTool: ToolRunner = async (job, rawOptions, ctx) => {
   const options = withDefaults(defaults, rawOptions)
   const input = job.paths[0]
@@ -62,6 +93,8 @@ export const ocrTool: ToolRunner = async (job, rawOptions, ctx) => {
   }
 
   const wantPdf = outputs.includes('pdf')
+  const aiRequest = options.useAi && options.ai && options.ai.model !== '' ? options.ai : null
+  const span = aiRequest ? 70 : 90
   const pages: OcrPage[] = []
   const overlays: PageOverlay[] = []
   let words = 0
@@ -83,7 +116,7 @@ export const ocrTool: ToolRunner = async (job, rawOptions, ctx) => {
         baseForPdf = new Uint8Array(raw)
         for (let number = 1; number <= info.pages; number += 1) {
           if (ctx.signal.aborted) throw new CancelledError()
-          ctx.progress(5 + ((number - 1) / info.pages) * 90, info.pages > 1 ? `Seite ${number} von ${info.pages}` : 'Text wird erkannt')
+          ctx.progress(5 + ((number - 1) / info.pages) * span, info.pages > 1 ? `Seite ${number} von ${info.pages}` : 'Text wird erkannt')
           if (options.skipTextPages) {
             const existing = (await document.text(number)).trim()
             if (existing.length >= TEXT_PAGE_MIN) {
@@ -118,6 +151,8 @@ export const ocrTool: ToolRunner = async (job, rawOptions, ctx) => {
     const hasText = pages.some((page) => page.blocks.length > 0)
     if (!hasText) throw new EngineError('unsupported', 'Es wurde kein Text erkannt. Bitte prüfe Sprache und Bildqualität')
 
+    const aiReport = aiRequest ? await refinePages(pages, languages, aiRequest, ctx, 5 + span) : null
+
     ctx.progress(96, 'Ergebnis wird geschrieben')
     const paths = outputPaths(input, options.outputDir, outputs)
     const written: string[] = []
@@ -141,14 +176,20 @@ export const ocrTool: ToolRunner = async (job, rawOptions, ctx) => {
 
     const confidences = pages.flatMap((page) => (page.confidence === null ? [] : [page.confidence]))
     const weakPages = pages.filter((page) => page.confidence !== null && page.confidence < WEAK).map((page) => page.number)
-    const result: OcrResult = { languages, pages, confidence: average(confidences), words, weakPages }
+    const result: OcrResult = { languages, pages, confidence: average(confidences), words, weakPages, ai: aiReport }
     const confidenceText = result.confidence === null ? '' : ` · Sicherheit ${result.confidence} %`
+    const aiText = aiReport && aiReport.refined.length > 0 ? ' · KI aufbereitet' : ''
+    const aiNotes: string[] = []
+    if (aiReport?.failed) aiNotes.push(`KI nicht erreichbar (${aiReport.failed}). Der Text ist ohne KI aufbereitet`)
+    else if (aiReport && aiReport.skipped.length > 0) aiNotes.push(`KI-Änderung auf Seite ${aiReport.skipped.join(', ')} verworfen, dort steht der Originaltext`)
+    const weakNote = weakPages.length ? `Seite ${weakPages.join(', ')} ist unsicher erkannt. Bitte prüfen` : note
+    const detail = [weakNote, ...aiNotes].filter((entry): entry is string => Boolean(entry)).join('. ') || null
     return {
       outputs: written,
       outputSize: null,
       data: result,
-      detail: weakPages.length ? `Seite ${weakPages.join(', ')} ist unsicher erkannt. Bitte prüfen` : note,
-      summary: `${pages.length} ${pages.length === 1 ? 'Seite' : 'Seiten'} · ${languageNames(languages)}${confidenceText}`
+      detail,
+      summary: `${pages.length} ${pages.length === 1 ? 'Seite' : 'Seiten'} · ${languageNames(languages)}${confidenceText}${aiText}`
     }
   } finally {
     if (holder.session) await holder.session.close()

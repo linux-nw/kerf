@@ -117,7 +117,7 @@ export function OcrView() {
   }
 
   const start = () => {
-    const options: OcrOptions = { languages, outputs, outputDir, skipTextPages }
+    const options: OcrOptions = { languages, outputs, outputDir, skipTextPages, useAi: false, ai: null }
     app.run('ocr', pending.map((entry) => entry.info.id), pending.map((entry) => ({ id: entry.info.id, paths: [entry.info.path] })), options)
   }
 

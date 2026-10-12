@@ -112,11 +112,30 @@ export interface PdfOptions {
 
 export type OcrOutput = 'pdf' | 'txt' | 'md' | 'docx'
 
+export type AiProvider = 'ollama' | 'openai'
+
+export interface AiRequest {
+  provider: AiProvider
+  baseUrl: string
+  apiKey: string
+  model: string
+}
+
+export interface AiSettings {
+  enabled: boolean
+  provider: AiProvider
+  baseUrl: string
+  apiKey: string
+  model: string
+}
+
 export interface OcrOptions {
   languages: string[]
   outputs: OcrOutput[]
   outputDir: string | null
   skipTextPages: boolean
+  useAi: boolean
+  ai: AiRequest | null
 }
 
 export type OcrBlock =
@@ -131,12 +150,20 @@ export interface OcrPage {
   source: 'ocr' | 'textlayer'
 }
 
+export interface AiReport {
+  model: string
+  refined: number[]
+  skipped: number[]
+  failed: string | null
+}
+
 export interface OcrResult {
   languages: string[]
   pages: OcrPage[]
   confidence: number | null
   words: number
   weakPages: number[]
+  ai?: AiReport | null
 }
 
 export interface MetaCleanOptions {
@@ -197,6 +224,52 @@ export interface MetaReport {
   hints: string[]
 }
 
+export interface Settings {
+  outputDir: string | null
+  historyEnabled: boolean
+  ocrLanguages: string[]
+  ocrOutputs: OcrOutput[]
+  ai: AiSettings
+}
+
+export interface SettingsPatch {
+  outputDir?: string | null
+  historyEnabled?: boolean
+  ocrLanguages?: string[]
+  ocrOutputs?: OcrOutput[]
+  ai?: Partial<AiSettings>
+}
+
+export interface AiModel {
+  id: string
+  label: string
+  sizeBytes: number | null
+  detail: string | null
+}
+
+export interface AiStatus {
+  reachable: boolean
+  hostAllowed: boolean
+  version: string | null
+  error: string | null
+  models: AiModel[]
+}
+
+export interface AiPullUpdate {
+  model: string
+  status: string
+  completed: number | null
+  total: number | null
+  done: boolean
+  error: string | null
+}
+
+export interface AppInfo {
+  version: string
+  dataPath: string
+  platform: string
+}
+
 export interface KerfApi {
   pickFiles(tool: ToolId): Promise<AddResult>
   pickFolder(tool: ToolId): Promise<AddResult>
@@ -220,7 +293,14 @@ export interface KerfApi {
   pdfFind(path: string, terms: string[], patterns: string[]): Promise<TextMatch[]>
   readMetadata(path: string): Promise<MetaReport>
   saveText(defaultName: string, content: string): Promise<string | null>
+  getSettings(): Promise<Settings>
+  saveSettings(patch: SettingsPatch): Promise<Settings>
+  aiStatus(request: Pick<AiRequest, 'provider' | 'baseUrl' | 'apiKey'>): Promise<AiStatus>
+  aiPull(baseUrl: string, model: string): Promise<void>
+  aiPullCancel(): Promise<void>
+  getAppInfo(): Promise<AppInfo>
   onJobUpdate(listener: (update: JobUpdate) => void): () => void
   onFilesOpened(listener: (result: AddResult) => void): () => void
   onHistoryChanged(listener: () => void): () => void
+  onAiPull(listener: (update: AiPullUpdate) => void): () => void
 }

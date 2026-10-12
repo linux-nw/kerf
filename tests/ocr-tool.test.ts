@@ -8,6 +8,7 @@ import { openPdf } from '../src/main/engines/pdf/open'
 import { JobRunner } from '../src/main/jobs'
 import { ocrTool } from '../src/main/tools/ocr'
 import type { JobUpdate, OcrResult } from '../src/shared/types'
+import { closedPortUrl, startFakeAi } from './helpers/fake-ai'
 
 const fixtures = join(__dirname, 'fixtures')
 
@@ -109,4 +110,70 @@ describe('Texterkennung als Werkzeug', () => {
     expect(await run(blank, { outputs: [] })).toMatchObject({ status: 'error' })
     expect(await run(blank, { languages: ['abc'] })).toMatchObject({ status: 'error', errorCode: 'toolmissing' })
   }, 120000)
+
+  describe('mit KI-Aufbereitung', () => {
+    async function runWithAi(baseUrl: string, reply: ((content: string) => string) | null) {
+      const dir = mkdtempSync(join(tmpdir(), 'kerf-ocr-ai-'))
+      const source = join(dir, 'brief.png')
+      writeFileSync(source, readFileSync(join(fixtures, 'de.png')))
+      const ai = { provider: 'ollama' as const, baseUrl, apiKey: '', model: 'gemma4:e4b' }
+      const result = await run(source, { languages: ['deu', 'eng'], outputs: ['txt', 'md'], useAi: true, ai })
+      return { dir, result }
+    }
+
+    it('übernimmt die Korrektur des Modells und nennt es im Ergebnis', async () => {
+      const server = await startFakeAi({ reply: (content) => content.replace('Jahresbericht', 'Jahresberichts') })
+      try {
+        const { dir, result } = await runWithAi(server.url, null)
+        expect(result.status).toBe('done')
+        const data = result.data as OcrResult
+        expect(data.ai?.model).toBe('gemma4:e4b')
+        expect(data.ai?.refined).toEqual([1])
+        expect(readFileSync(join(dir, 'brief.ocr.md'), 'utf8')).toContain('# Jahresberichts 2025')
+        expect(server.requests.some((request) => request.path === '/api/chat')).toBe(true)
+      } finally {
+        await server.close()
+      }
+    }, 180000)
+
+    it('verwirft eine Neufassung und schreibt den Originaltext', async () => {
+      const server = await startFakeAi({ reply: () => '# Etwas völlig anderes\n\nNichts davon stand im Dokument.' })
+      try {
+        const { dir, result } = await runWithAi(server.url, null)
+        expect(result.status).toBe('done')
+        const data = result.data as OcrResult
+        expect(data.ai?.refined).toEqual([])
+        expect(data.ai?.skipped).toEqual([1])
+        expect(readFileSync(join(dir, 'brief.ocr.md'), 'utf8')).toContain('# Jahresbericht 2025')
+        expect(readFileSync(join(dir, 'brief.ocr.txt'), 'utf8')).not.toContain('völlig anderes')
+        expect(result.detail).toContain('verworfen')
+      } finally {
+        await server.close()
+      }
+    }, 180000)
+
+    it('liefert den Text auch ohne erreichbare KI und sagt das offen', async () => {
+      const { dir, result } = await runWithAi(await closedPortUrl(), null)
+      expect(result.status).toBe('done')
+      const data = result.data as OcrResult
+      expect(data.ai?.failed).toContain('Keine Verbindung')
+      expect(readFileSync(join(dir, 'brief.ocr.md'), 'utf8')).toContain('# Jahresbericht 2025')
+      expect(result.detail).toContain('ohne KI')
+    }, 180000)
+
+    it('fragt keine KI an, solange sie nicht eingeschaltet ist', async () => {
+      const server = await startFakeAi()
+      try {
+        const dir = mkdtempSync(join(tmpdir(), 'kerf-ocr-ai-'))
+        const source = join(dir, 'brief.png')
+        writeFileSync(source, readFileSync(join(fixtures, 'de.png')))
+        const result = await run(source, { languages: ['deu'], outputs: ['txt'], useAi: false, ai: { provider: 'ollama', baseUrl: server.url, apiKey: '', model: 'gemma4:e4b' } })
+        expect(result.status).toBe('done')
+        expect((result.data as OcrResult).ai).toBeNull()
+        expect(server.requests).toHaveLength(0)
+      } finally {
+        await server.close()
+      }
+    }, 180000)
+  })
 })
