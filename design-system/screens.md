@@ -1,5 +1,7 @@
 # Screens und Abläufe
 
+> **Abweichung in der Umsetzung:** Der rechte Inspector ist entfallen. Optionen und der Starten-Button sitzen in einer Aktionsleiste am unteren Rand der Arbeitsfläche (`kf-actionbar`), längere Auswahlen öffnen als Popover (`kf-pill`). Verlauf ist eine eigene Ansicht in der Sidebar. Die Aussagen zum Inspector unten gelten sinngemäß für diese Leiste.
+
 ## Layout der Workbench
 
 Alle Module teilen ein Gerüst: Sidebar links, Arbeitsfläche in der Mitte, Inspector rechts, Statusleiste unten.

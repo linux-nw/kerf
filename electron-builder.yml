@@ -5,12 +5,10 @@ directories:
   buildResources: build
 files:
   - out/**
+  - resources/tessdata/**
   - package.json
-asar: true
-asarUnpack:
-  - out/main/worker-*.js
-  - node_modules/sharp/**
-  - node_modules/@img/**
+asar: false
+npmRebuild: false
 win:
   target:
     - nsis
