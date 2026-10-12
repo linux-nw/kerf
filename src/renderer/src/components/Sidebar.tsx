@@ -1,4 +1,4 @@
-import { Archive, Combine, EyeOff, FileScan, FileSearch, Fingerprint, History, Monitor, Moon, RefreshCw, ScanText, Shrink, Sun, type LucideIcon } from 'lucide-react'
+import { Archive, Combine, EyeOff, FileScan, FileSearch, Fingerprint, History, Monitor, Moon, RefreshCw, ScanText, Settings, Shrink, Sun, type LucideIcon } from 'lucide-react'
 import { TOOLS, type NavId, type ToolId } from '@shared/tools'
 import type { ThemeChoice } from '../theme'
 import { LocalBadge } from './LocalBadge'
@@ -73,6 +73,12 @@ export function Sidebar({ active, busy, historyCount, theme, onNavigate, onTheme
         </nav>
       </div>
       <div className="kf-side__foot">
+        <nav className="kf-nav" aria-label="Einstellungen">
+          <button type="button" className={`kf-nav__item${active === 'settings' ? ' is-active' : ''}`} aria-current={active === 'settings' ? 'page' : undefined} onClick={() => onNavigate('settings')}>
+            <Settings className="kf-icon" aria-hidden="true" />
+            Einstellungen
+          </button>
+        </nav>
         <div className="kf-seg kf-seg--icons" role="radiogroup" aria-label="Erscheinungsbild">
           {THEMES.map(({ id, label, icon: Icon }) => (
             <button key={id} type="button" role="radio" aria-checked={theme === id} title={label} aria-label={label} className={`kf-seg__item${theme === id ? ' is-active' : ''}`} onClick={() => onTheme(id)}>

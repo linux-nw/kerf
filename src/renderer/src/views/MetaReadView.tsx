@@ -1,16 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Copy, Download, ShieldOff, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Camera, Clock, Copy, Download, FileSearch, MapPin, ShieldOff, Trash2, User, X, type LucideIcon } from 'lucide-react'
 import { formatBytes } from '@shared/format'
 import { extensionOf, CLEANABLE } from '@shared/tools'
 import type { MetaReport } from '@shared/types'
+import { PasteHint } from '../components/Dropzone'
 import { Page } from '../components/Page'
-import { copyText, ExtBadge, IconButton } from '../components/ui'
+import { ToolDrop } from '../components/ToolDrop'
+import { copyText, ExtBadge, IconButton, Lbl } from '../components/ui'
 import { useApp } from '../context'
 
 interface Loaded {
   report?: MetaReport
   error?: string
 }
+
+const FINDS: Array<{ icon: LucideIcon; title: string; text: string; rows: Array<[string, string]> }> = [
+  { icon: MapPin, title: 'Ort', text: 'GPS-Koordinaten, wo ein Foto entstanden ist.', rows: [['Breite', '47.7811'], ['Länge', '9.6100']] },
+  { icon: Camera, title: 'Kamera', text: 'Gerät, Objektiv, Belichtung und Aufnahmezeit.', rows: [['Modell', 'Pixel 9 Pro'], ['Zeit', '12.07.2026']] },
+  { icon: User, title: 'Person', text: 'Autor, Firma und Benutzername in Dokumenten.', rows: [['Autor', 'Max Muster'], ['Firma', 'Muster GmbH']] },
+  { icon: Clock, title: 'Verlauf', text: 'Programm, Version und Bearbeitungsdatum.', rows: [['Programm', 'Word 16.0'], ['Geändert', '03.10.2026']] }
+]
 
 function reportText(report: MetaReport): string {
   const lines = [`${report.name} (${report.kind}, ${formatBytes(report.size)})`]
@@ -70,12 +79,45 @@ export function MetaReadView() {
     await window.kerf.saveText(`${report.name}.metadaten.txt`, reportText(report))
   }
 
+  const startView = (
+    <div className="kf-start kf-start--tight">
+      <ToolDrop tool="metaread" layout="row" fixed icon={FileSearch} label="Eine Datei zum Ansehen ablegen" hint={<>Foto, PDF oder Office-Datei. <PasteHint /></>} />
+      <div className="kf-sec" style={{ flex: 1, minHeight: 0 }}>
+        <Lbl>Das findet Kerf</Lbl>
+        <div className="kf-rep">
+          {FINDS.map((item) => (
+            <div key={item.title} className="kf-card kf-k">
+              <span className="kf-ib">
+                <item.icon className="kf-icon" aria-hidden="true" />
+              </span>
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+              <div className="kf-rows" aria-hidden="true">
+                {item.rows.map(([key, value]) => (
+                  <div key={key}>
+                    {key}
+                    <span>{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="kf-callout kf-callout--warn">
+          <AlertTriangle className="kf-icon" aria-hidden="true" />
+          Heikle Felder wie Ort und Autor markiert Kerf farbig. Entfernen kannst du sie im nächsten Bereich.
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <Page
       tool="metaread"
       hasFiles={state.entries.length > 0}
+      start={startView}
+      subtitle="Sieh nach, was in deinen Dateien steckt, bevor du sie weitergibst."
       dropLabel="Datei zum Ansehen ablegen"
-      allowFolders={false}
       headRight={
         state.entries.length > 0 ? (
           <button type="button" className="kf-btn kf-btn--ghost kf-btn--sm" onClick={() => app.dispatch({ type: 'clear', tool: 'metaread' })}>

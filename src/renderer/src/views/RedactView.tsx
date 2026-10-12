@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
-import { ChevronLeft, ChevronRight, Trash2, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, EyeOff, Search, ShieldCheck, Square, Trash2, X } from 'lucide-react'
 import type { RedactBox, TextMatch } from '@shared/types'
 import { ActionBar } from '../components/ActionBar'
 import { FileRow } from '../components/FileRow'
 import { OutputDir } from '../components/OutputDir'
 import { Page } from '../components/Page'
+import { ToolDrop } from '../components/ToolDrop'
 import { Notice, Toggle } from '../components/ui'
 import { useApp } from '../context'
 import { usePdfInfo } from '../hooks/usePdfThumbs'
@@ -148,12 +149,57 @@ export function RedactView() {
     />
   )
 
+  const startView = (
+    <div className="kf-start kf-start--tight">
+      <div className="kf-split kf-split--red">
+        <ToolDrop tool="redact" icon={EyeOff} label="Eine PDF ablegen" />
+        <div className="kf-docbox" aria-hidden="true">
+          <div className="kf-sheet">
+            <div className="kf-ln kf-ln--h" />
+            <div className="kf-ln" style={{ width: '90%' }} />
+            <div className="kf-bk" style={{ width: '62%' }} />
+            <div className="kf-ln" style={{ width: '80%' }} />
+            <div className="kf-ln" style={{ width: '94%' }} />
+            <div className="kf-bk" style={{ width: '78%' }} />
+            <div className="kf-ln" style={{ width: '70%' }} />
+            <div className="kf-ln" style={{ width: '88%' }} />
+            <div className="kf-bk" style={{ width: '48%' }} />
+            <div className="kf-ln" style={{ width: '92%' }} />
+            <div className="kf-ln" style={{ width: '60%' }} />
+          </div>
+        </div>
+      </div>
+      <div className="kf-how3">
+        {[
+          { icon: Square, title: 'Markieren', text: 'Rechteck über die Stelle ziehen.' },
+          { icon: Search, title: 'Suchen', text: 'Wort, IBAN oder E-Mail eingeben, alle Treffer werden markiert.' },
+          { icon: Check, title: 'Prüfen', text: 'Kerf sucht im Ergebnis nach, ob noch etwas lesbar ist.' }
+        ].map((item) => (
+          <div key={item.title} className="kf-fact">
+            <span className="kf-ib kf-ib--sm">
+              <item.icon className="kf-icon" aria-hidden="true" />
+            </span>
+            <div>
+              <b>{item.title}</b>
+              <span>{item.text}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="kf-callout kf-callout--ok">
+        <ShieldCheck className="kf-icon" aria-hidden="true" />
+        Der Text unter dem Balken wird wirklich entfernt, nicht nur schwarz überdeckt.
+      </div>
+    </div>
+  )
+
   return (
     <Page
       tool="redact"
       hasFiles={state.entries.length > 0}
+      start={startView}
+      subtitle="Namen, IBANs und Adressen in PDFs unwiderruflich unkenntlich machen."
       dropLabel="PDF zum Schwärzen ablegen"
-      allowFolders={false}
       bar={bar}
       headRight={
         state.entries.length > 0 && !running ? (

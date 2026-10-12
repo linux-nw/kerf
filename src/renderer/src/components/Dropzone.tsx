@@ -1,19 +1,32 @@
-import { useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
-import { ClipboardPaste, FilePlus2, FileUp, FolderPlus } from 'lucide-react'
+import { useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { FilePlus2, FileUp, type LucideIcon } from 'lucide-react'
 
 interface Props {
   compact: boolean
   disabled?: boolean
   label: string
-  formats: string
-  allowFolders?: boolean
+  hint?: ReactNode
+  icon?: LucideIcon
+  art?: ReactNode
+  layout?: 'center' | 'row'
+  hero?: boolean
+  dim?: boolean
+  fixed?: boolean
+  className?: string
+  children?: ReactNode
   onPick: () => void
-  onPickFolder?: () => void
-  onPaste: () => void
   onDropFiles: (files: File[]) => void
 }
 
-export function Dropzone({ compact, disabled, label, formats, allowFolders = true, onPick, onPickFolder, onPaste, onDropFiles }: Props) {
+export function PasteHint() {
+  return (
+    <>
+      Ziehen, klicken oder <kbd className="kf-kbd">Strg</kbd> + <kbd className="kf-kbd">V</kbd>
+    </>
+  )
+}
+
+export function Dropzone({ compact, disabled, label, hint, icon, art, layout = 'center', hero = false, dim = false, fixed = false, className = '', children, onPick, onDropFiles }: Props) {
   const [over, setOver] = useState(false)
   const depth = useRef(0)
 
@@ -31,51 +44,51 @@ export function Dropzone({ compact, disabled, label, formats, allowFolders = tru
     }
   }
 
-  const Icon = compact ? FilePlus2 : FileUp
+  const Icon = compact ? FilePlus2 : (icon ?? FileUp)
+  const classes = ['kf-drop']
+  if (compact) classes.push('kf-drop--compact')
+  else {
+    if (hero) classes.push('kf-drop--hero')
+    if (layout === 'row') classes.push('kf-drop--row')
+    if (fixed) classes.push('kf-drop--fixed')
+    if (dim) classes.push('kf-drop--dim')
+  }
+  if (over) classes.push('is-over')
+  if (className) classes.push(className)
 
   return (
-    <div className={`kf-dropwrap${compact ? ' kf-dropwrap--compact' : ''}`}>
-      <div
-        className={`kf-drop${compact ? ' kf-drop--compact' : ''}${over ? ' is-over' : ''}`}
-        role="button"
-        tabIndex={0}
-        aria-disabled={disabled}
-        aria-label={label}
-        onClick={() => !disabled && onPick()}
-        onKeyDown={handleKey}
-        onDragOver={(event) => event.preventDefault()}
-        onDragEnter={() => {
-          depth.current += 1
-          setOver(true)
-        }}
-        onDragLeave={() => {
-          depth.current -= 1
-          if (depth.current <= 0) setOver(false)
-        }}
-        onDrop={handleDrop}
-      >
+    <div
+      className={classes.join(' ')}
+      role="button"
+      tabIndex={0}
+      aria-disabled={disabled}
+      aria-label={label}
+      onClick={() => !disabled && onPick()}
+      onKeyDown={handleKey}
+      onDragOver={(event) => event.preventDefault()}
+      onDragEnter={() => {
+        depth.current += 1
+        setOver(true)
+      }}
+      onDragLeave={() => {
+        depth.current -= 1
+        if (depth.current <= 0) setOver(false)
+      }}
+      onDrop={handleDrop}
+    >
+      {art && !compact ? (
+        art
+      ) : (
         <span className="kf-drop__mark">
           <Icon className="kf-icon kf-icon--lg" aria-hidden="true" />
         </span>
+      )}
+      <div className="kf-drop__body">
         <div>
           <p className="kf-drop__title">{over ? 'Loslassen zum Hinzufügen' : compact ? 'Weitere Dateien' : label}</p>
-          <p className="kf-drop__hint">
-            {compact ? 'Ziehen, klicken oder Strg V' : 'Ziehen, klicken oder mit Strg V einfügen. Nichts verlässt diesen Rechner.'}
-          </p>
+          <p className="kf-drop__hint">{hint ?? <PasteHint />}</p>
         </div>
-        {compact ? null : <span className="kf-chip kf-drop__formats">{formats}</span>}
-      </div>
-      <div className="kf-dropwrap__side">
-        <button type="button" className="kf-btn kf-btn--secondary kf-btn--sm" onClick={onPaste} disabled={disabled} title="Dateien oder Bild aus der Zwischenablage einfügen">
-          <ClipboardPaste className="kf-icon kf-icon--sm" aria-hidden="true" />
-          Einfügen
-        </button>
-        {allowFolders && onPickFolder ? (
-          <button type="button" className="kf-btn kf-btn--secondary kf-btn--sm" onClick={onPickFolder} disabled={disabled}>
-            <FolderPlus className="kf-icon kf-icon--sm" aria-hidden="true" />
-            Ordner
-          </button>
-        ) : null}
+        {compact ? null : children}
       </div>
     </div>
   )

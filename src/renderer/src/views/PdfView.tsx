@@ -1,24 +1,65 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, RotateCcw, RotateCw, Trash2, Undo2 } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Droplets, Hash, Info, LayoutGrid, Merge, RotateCcw, RotateCw, Scissors, Trash2, Undo2, type LucideIcon } from 'lucide-react'
 import type { PageEdit, PdfMode, PdfOptions } from '@shared/types'
 import { extensionOf } from '@shared/tools'
 import { ActionBar } from '../components/ActionBar'
 import { FileRow } from '../components/FileRow'
 import { GroupRow } from '../components/GroupRow'
 import { OutputDir } from '../components/OutputDir'
+import { PdfArt } from '../components/art'
 import { Page } from '../components/Page'
-import { Field, IconButton, Notice, Seg, Switch } from '../components/ui'
+import { ToolDrop } from '../components/ToolDrop'
+import { Field, IconButton, Lbl, Notice, Switch } from '../components/ui'
 import { useApp } from '../context'
 import { usePdfInfo, usePdfThumbs } from '../hooks/usePdfThumbs'
 import { isActive, isPending } from '../store'
 
 const MODES: Array<{ id: PdfMode; label: string; title: string }> = [
-  { id: 'merge', label: 'Zusammenfügen', title: 'PDFs und Bilder zu einer Datei verbinden' },
+  { id: 'merge', label: 'Zusammenführen', title: 'PDFs und Bilder zu einer Datei verbinden' },
   { id: 'split', label: 'Teilen', title: 'Eine PDF in mehrere aufteilen' },
-  { id: 'pages', label: 'Seiten', title: 'Seiten ordnen, drehen und löschen' },
+  { id: 'pages', label: 'Seiten ordnen', title: 'Seiten ordnen, drehen und löschen' },
   { id: 'watermark', label: 'Wasserzeichen', title: 'Text quer über jede Seite legen' },
   { id: 'numbers', label: 'Seitenzahlen', title: 'Seitenzahlen einfügen' }
 ]
+
+const TILES: Array<{ id: PdfMode; title: string; text: string; code: string; wide?: boolean }> = [
+  { id: 'merge', title: 'Zusammenführen', text: 'Mehrere PDFs zu einer Datei verbinden. Die Reihenfolge ziehst du selbst.', code: '3 PDFs → 1 PDF' },
+  { id: 'split', title: 'Teilen', text: 'Eine PDF zerlegen: nach Seitenbereichen oder jede Seite einzeln.', code: '1 PDF → mehrere PDFs' },
+  { id: 'pages', title: 'Seiten ordnen', text: 'Seiten verschieben, drehen oder löschen. Du siehst jede Seite als Vorschau.', code: 'Seiten umsortieren' },
+  { id: 'watermark', title: 'Wasserzeichen', text: 'Text quer über jede Seite legen, zum Beispiel „Entwurf“ oder „Vertraulich“. Das Original bleibt unverändert.', code: 'Text auf allen Seiten', wide: true },
+  { id: 'numbers', title: 'Seitenzahlen', text: 'Jede Seite bekommt eine Nummer. Format und Position wählst du, auch „Seite 1 von 12“.', code: '1, 2, 3 … automatisch', wide: true }
+]
+
+const DROP: Record<PdfMode, { icon: LucideIcon; title: string; hint: string }> = {
+  merge: { icon: Merge, title: 'PDFs hier ablegen', hint: 'Mindestens zwei Dateien, auch Bilder.' },
+  split: { icon: Scissors, title: 'Eine PDF hier ablegen', hint: 'Sie wird in mehrere Dateien zerlegt.' },
+  pages: { icon: LayoutGrid, title: 'Eine PDF hier ablegen', hint: 'Danach siehst du jede Seite als Vorschau.' },
+  watermark: { icon: Droplets, title: 'PDFs hier ablegen', hint: 'Der Text kommt auf jede Seite.' },
+  numbers: { icon: Hash, title: 'PDFs hier ablegen', hint: 'Jede Seite bekommt ihre Nummer.' }
+}
+
+const HOW: Record<PdfMode, { steps: Array<[string, string]>; result: string }> = {
+  merge: {
+    steps: [['PDFs hineinziehen', 'Beliebig viele, auch aus verschiedenen Ordnern.'], ['Reihenfolge festlegen', 'Dateien in der Liste nach oben oder unten schieben.'], ['Zusammenführen', 'Kerf speichert eine neue PDF neben der ersten Datei.']],
+    result: 'Rechnung.zusammen.pdf'
+  },
+  split: {
+    steps: [['PDF hineinziehen', 'Eine oder mehrere, jede wird einzeln geteilt.'], ['Bereiche festlegen', 'Zum Beispiel 1-3, 5 oder jede Seite einzeln.'], ['Teilen', 'Die Teile landen in einem neuen Ordner neben dem Original.']],
+    result: 'Rechnung_Teile/'
+  },
+  pages: {
+    steps: [['PDF hineinziehen', 'Du siehst alle Seiten als kleine Vorschau.'], ['Seiten bearbeiten', 'Verschieben, drehen oder löschen, wie du es brauchst.'], ['Übernehmen', 'Kerf speichert eine neue PDF, das Original bleibt.']],
+    result: 'Rechnung.bearbeitet.pdf'
+  },
+  watermark: {
+    steps: [['PDFs hineinziehen', 'Eine oder mehrere auf einmal.'], ['Text und Look wählen', 'Zum Beispiel ENTWURF, mit Größe und Sichtbarkeit.'], ['Einfügen', 'Kerf speichert neue Dateien, die Originale bleiben.']],
+    result: 'Rechnung.wasserzeichen.pdf'
+  },
+  numbers: {
+    steps: [['PDFs hineinziehen', 'Eine oder mehrere auf einmal.'], ['Format wählen', 'Zum Beispiel „Seite 1 von 12“, Position und Startzahl.'], ['Einfügen', 'Kerf speichert neue Dateien, die Originale bleiben.']],
+    result: 'Rechnung.nummeriert.pdf'
+  }
+}
 
 const POSITIONS: Array<{ id: PdfOptions['numberPosition']; label: string }> = [
   { id: 'bottom-center', label: 'Unten Mitte' },
@@ -99,6 +140,7 @@ export function PdfView() {
   const app = useApp()
   const state = app.state.pdf
   const [mode, setMode] = useState<PdfMode>('merge')
+  const [chosen, setChosen] = useState(false)
   const [splitEvery, setSplitEvery] = useState(false)
   const [ranges, setRanges] = useState('')
   const [watermark, setWatermark] = useState('ENTWURF')
@@ -166,7 +208,6 @@ export function PdfView() {
         state.entries.forEach((entry) => isActive(entry.update) && app.cancel(entry.info.id))
         if (state.groupId) app.cancel(state.groupId)
       }}
-      extra={<Seg label="Werkzeug" value={mode} items={MODES} onChange={setMode} />}
       options={
         <>
           {mode === 'split' ? (
@@ -229,10 +270,86 @@ export function PdfView() {
     />
   )
 
+  const tabs = (
+    <div className="kf-tabs" role="tablist" aria-label="Werkzeug">
+      {MODES.map((item) => (
+        <button key={item.id} type="button" role="tab" aria-selected={mode === item.id} title={item.title} className={mode === item.id ? 'is-on' : ''} onClick={() => setMode(item.id)}>
+          {item.label}
+        </button>
+      ))}
+    </div>
+  )
+
+  const drop = DROP[mode]
+  const how = HOW[mode]
+  const startView = chosen ? (
+    <div className="kf-start kf-start--tight">
+      {tabs}
+      <div className="kf-work">
+        <ToolDrop tool="pdf" label={drop.title} icon={drop.icon} hint={<>{drop.hint} Ziehen, klicken oder <kbd className="kf-kbd">Strg</kbd> + <kbd className="kf-kbd">V</kbd></>} />
+        <div className="kf-howto">
+          <Lbl>So läuft es</Lbl>
+          {how.steps.map(([title, text], index) => (
+            <div key={title} className="kf-how">
+              <span className="kf-how__n">{index + 1}</span>
+              <div>
+                <b>{title}</b>
+                <span className="kf-how__t">{text}</span>
+              </div>
+            </div>
+          ))}
+          <div className="kf-res">
+            <span className="kf-mini">PDF</span>
+            <code>{how.result}</code>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div className="kf-start">
+      <div className="kf-steps" aria-label="Ablauf">
+        <span className="kf-step is-on"><span className="kf-step__n">1</span>Aufgabe wählen</span>
+        <span className="kf-step__line" />
+        <span className="kf-step"><span className="kf-step__n">2</span>PDFs hineinziehen</span>
+        <span className="kf-step__line" />
+        <span className="kf-step"><span className="kf-step__n">3</span>Speichern</span>
+      </div>
+      <div className="kf-tiles">
+        {TILES.map((tile) => (
+          <button
+            key={tile.id}
+            type="button"
+            className={`kf-tile${tile.wide ? ' kf-tile--wide' : ''}`}
+            onClick={() => {
+              setMode(tile.id)
+              setChosen(true)
+            }}
+          >
+            <span className="kf-tile__art">
+              <PdfArt mode={tile.id} />
+            </span>
+            <span className="kf-tile__text">
+              <h2>{tile.title}</h2>
+              <p>{tile.text}</p>
+              <code>{tile.code}</code>
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="kf-footnote">
+        <Info className="kf-icon" aria-hidden="true" />
+        Danach PDFs ziehen, klicken oder mit Strg V einfügen. Deine Originale bleiben unberührt.
+      </div>
+    </div>
+  )
+
   return (
     <Page
       tool="pdf"
       hasFiles={state.entries.length > 0}
+      start={startView}
+      top={tabs}
+      subtitle="Such dir aus, was mit deinen PDFs passieren soll."
       dropLabel="PDFs oder Bilder ablegen"
       bar={bar}
       headRight={

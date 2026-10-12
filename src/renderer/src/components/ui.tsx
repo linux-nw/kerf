@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Check } from 'lucide-react'
 
 export function Seg<T extends string>({ value, items, onChange, label }: { value: T; items: Array<{ id: T; label: string; title?: string; disabled?: boolean }>; onChange: (id: T) => void; label: string }) {
   return (
@@ -27,6 +28,24 @@ export function Toggle({ checked, onChange, children, title, disabled }: { check
       <span className="kf-opt__box" aria-hidden="true" />
       {children}
     </button>
+  )
+}
+
+export function ChipToggle({ on, onChange, children, disabled }: { on: boolean; onChange: (next: boolean) => void; children: ReactNode; disabled?: boolean }) {
+  return (
+    <button type="button" role="checkbox" aria-checked={on} disabled={disabled} className={`kf-c${on ? ' is-on' : ''}`} onClick={() => onChange(!on)}>
+      {on ? <Check className="kf-icon" aria-hidden="true" /> : null}
+      {children}
+    </button>
+  )
+}
+
+export function Lbl({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
+  return (
+    <div className="kf-lbl">
+      <span>{children}</span>
+      {aside ? <span className="kf-lbl__aside">{aside}</span> : null}
+    </div>
   )
 }
 

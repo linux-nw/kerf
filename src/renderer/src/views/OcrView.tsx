@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Copy, Download, Eye, Trash2, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Copy, Download, Eye, ScanText, Sparkles, Trash2, X } from 'lucide-react'
 import { pagesToText } from '@shared/ocrText'
 import { OCR_LANGUAGES } from '@shared/tools'
 import type { OcrOptions, OcrOutput, OcrResult } from '@shared/types'
@@ -7,8 +7,10 @@ import { ActionBar } from '../components/ActionBar'
 import { FileRow } from '../components/FileRow'
 import { OutputDir } from '../components/OutputDir'
 import { Popover } from '../components/Popover'
+import { OcrDemoArt } from '../components/art'
 import { Page } from '../components/Page'
-import { copyText, IconButton, Toggle } from '../components/ui'
+import { ToolDrop } from '../components/ToolDrop'
+import { ChipToggle, copyText, IconButton, Lbl, Toggle } from '../components/ui'
 import { useApp } from '../context'
 import { isActive, isPending } from '../store'
 
@@ -29,6 +31,7 @@ function Reader({ name, result, onClose }: { name: string; result: OcrResult; on
           <h2 className="title-md kf-report__title">{name}</h2>
           <p className="kf-caption">
             {result.pages.length} {result.pages.length === 1 ? 'Seite' : 'Seiten'} · {result.words} Wörter{result.confidence !== null ? ` · Sicherheit ${result.confidence} %` : ''}
+            {result.ai && result.ai.refined.length > 0 ? ` · KI aufbereitet (${result.ai.model})` : ''}
           </p>
         </div>
         <div className="kf-row">
@@ -90,12 +93,26 @@ export function OcrView() {
   const languageList = useMemo(() => OCR_LANGUAGES.filter((entry) => !available || available.includes(entry.code)), [available])
   const [languages, setLanguages] = useState<string[]>(['deu', 'eng'])
   const [outputs, setOutputs] = useState<OcrOutput[]>(['pdf', 'txt'])
+  const [moreLanguages, setMoreLanguages] = useState(false)
+  const [aiOverride, setAiOverride] = useState<boolean | null>(null)
+  const seeded = useRef(false)
   const [skipTextPages, setSkipTextPages] = useState(true)
   const [outputDir, setOutputDir] = useState<string | null>(null)
   const [reader, setReader] = useState<string | null>(null)
 
   const pending = state.entries.filter(isPending)
   const running = state.entries.some((entry) => isActive(entry.update))
+
+  const settings = app.settings
+  useEffect(() => {
+    if (!settings || seeded.current) return
+    seeded.current = true
+    setLanguages(settings.ocrLanguages)
+    setOutputs(settings.ocrOutputs)
+  }, [settings])
+
+  const aiReady = Boolean(settings?.ai.enabled && settings.ai.model !== '')
+  const useAi = aiReady && (aiOverride ?? true)
 
   useEffect(() => {
     if (!available) return
@@ -117,7 +134,7 @@ export function OcrView() {
   }
 
   const start = () => {
-    const options: OcrOptions = { languages, outputs, outputDir, skipTextPages, useAi: false, ai: null }
+    const options: OcrOptions = { languages, outputs, outputDir, skipTextPages, useAi, ai: null }
     app.run('ocr', pending.map((entry) => entry.info.id), pending.map((entry) => ({ id: entry.info.id, paths: [entry.info.path] })), options)
   }
 
@@ -154,16 +171,92 @@ export function OcrView() {
               Seiten mit Text überspringen
             </Toggle>
           </Popover>
+          {aiReady ? (
+            <Toggle checked={useAi} onChange={setAiOverride} title={`Ein lokales Modell (${settings?.ai.model}) bessert Erkennungsfehler aus`}>
+              KI-Aufbereitung
+            </Toggle>
+          ) : null}
           <OutputDir value={outputDir} onChange={setOutputDir} />
         </>
       }
     />
   )
 
+  const shownLanguages = moreLanguages ? languageList : languageList.filter((entry, index) => index < 4 || languages.includes(entry.code))
+  const hiddenCount = languageList.length - shownLanguages.length
+
+  const startView = (
+    <div className="kf-start kf-start--tight">
+      <div className="kf-split kf-split--ocr">
+        <ToolDrop tool="ocr" icon={ScanText} label="Scan, Foto oder PDF ablegen" />
+        <div className="kf-demo" aria-hidden="true">
+          <OcrDemoArt />
+          <div className="kf-cap">
+            <span><b>Vorher:</b> nur ein Bild</span>
+            <span><b>Nachher:</b> echter, sauberer Text</span>
+          </div>
+        </div>
+      </div>
+      <div className="kf-two">
+        <div className="kf-card kf-card--tight">
+          <Lbl aside="mehrere gleichzeitig">Sprachen</Lbl>
+          <div className="kf-chips" role="group" aria-label="Sprachen">
+            {shownLanguages.map((entry) => (
+              <ChipToggle key={entry.code} on={languages.includes(entry.code)} onChange={(on) => toggleLanguage(entry.code, on)}>
+                {entry.label}
+              </ChipToggle>
+            ))}
+            {hiddenCount > 0 || moreLanguages ? (
+              <button type="button" className="kf-c kf-c--more" onClick={() => setMoreLanguages(!moreLanguages)}>
+                {moreLanguages ? 'Weniger' : `+ ${hiddenCount} weitere`}
+              </button>
+            ) : null}
+          </div>
+        </div>
+        <div className="kf-card kf-card--tight">
+          <Lbl aside="Original bleibt unberührt">Ergebnis</Lbl>
+          <div className="kf-chips" role="group" aria-label="Ausgabe">
+            {OUTPUTS.map((entry) => (
+              <ChipToggle key={entry.id} on={outputs.includes(entry.id)} onChange={(on) => setOutputs(on ? [...outputs, entry.id] : outputs.filter((id) => id !== entry.id))}>
+                {entry.label}
+              </ChipToggle>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="kf-aistrip">
+        <span className="kf-ib">
+          <Sparkles className="kf-icon" aria-hidden="true" />
+        </span>
+        <div className="kf-aistrip__text">
+          <b>KI-Aufbereitung {aiReady ? (useAi ? 'ist an' : 'ist für diesen Durchgang aus') : 'ist aus'}</b>
+          <span>
+            {aiReady
+              ? `Ein lokales Modell (${settings?.ai.model}) bessert Erkennungsfehler aus. Nichts verlässt deinen Rechner.`
+              : settings?.ai.enabled
+                ? 'Noch kein Modell gewählt. In den Einstellungen kannst du eines auswählen oder herunterladen.'
+                : 'Optional: Ein lokales Modell bessert Erkennungsfehler aus. Du schaltest es in den Einstellungen ein.'}
+          </span>
+        </div>
+        {aiReady ? (
+          <ChipToggle on={useAi} onChange={setAiOverride}>
+            Für diesen Durchgang
+          </ChipToggle>
+        ) : (
+          <button type="button" className="kf-btn kf-btn--secondary kf-btn--sm" onClick={() => app.go('settings')}>
+            Einstellungen
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <Page
       tool="ocr"
       hasFiles={state.entries.length > 0}
+      start={startView}
+      subtitle="Aus Scans und Fotos wird Text, den du suchen und kopieren kannst."
       dropLabel="Scans oder Fotos mit Text ablegen"
       bar={bar}
       headRight={

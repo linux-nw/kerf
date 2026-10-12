@@ -5,6 +5,7 @@ import './styles/fonts.css'
 import './styles/tokens.css'
 import './styles/components.css'
 import './styles/app.css'
+import './styles/start.css'
 
 const root = document.getElementById('root')
 if (root) createRoot(root).render(<StrictMode><App /></StrictMode>)

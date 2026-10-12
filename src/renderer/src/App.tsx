@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { toolMeta, type NavId, type ToolId } from '@shared/tools'
-import type { AddResult, Capabilities, HistoryEntry, NetworkStatus, StartJob } from '@shared/types'
+import type { AddResult, AiPullUpdate, Capabilities, HistoryEntry, NetworkStatus, Settings, SettingsPatch, StartJob } from '@shared/types'
 import { Dialog } from './components/Dialog'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
@@ -17,6 +17,7 @@ import { MetaReadView } from './views/MetaReadView'
 import { OcrView } from './views/OcrView'
 import { PdfView } from './views/PdfView'
 import { RedactView } from './views/RedactView'
+import { SettingsView } from './views/SettingsView'
 
 function isEditable(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -43,6 +44,8 @@ function VIEW(nav: NavId) {
       return <HashView />
     case 'archive':
       return <ArchiveView />
+    case 'settings':
+      return <SettingsView />
     default:
       return <HistoryView />
   }
@@ -55,12 +58,14 @@ export function App() {
   const [network, setNetwork] = useState<NetworkStatus | null>(null)
   const [caps, setCaps] = useState<Capabilities | null>(null)
   const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [settings, setSettings] = useState<Settings | null>(null)
+  const [pulls, setPulls] = useState<Record<string, AiPullUpdate>>({})
   const [forget, setForget] = useState<ForgetTarget | null>(null)
   const [clearAsk, setClearAsk] = useState(false)
   const lastTool = useRef<ToolId>('compress')
   const navRef = useRef(nav)
   navRef.current = nav
-  if (nav !== 'history') lastTool.current = nav
+  if (nav !== 'history' && nav !== 'settings') lastTool.current = nav
 
   useEffect(() => {
     applyTheme(theme)
@@ -79,15 +84,18 @@ export function App() {
   useEffect(() => {
     refreshHistory()
     void window.kerf.getCapabilities().then(setCaps)
+    void window.kerf.getSettings().then(setSettings)
     const poll = () => void window.kerf.getNetworkStatus().then(setNetwork)
     poll()
     const timer = window.setInterval(poll, 5000)
     const offUpdate = window.kerf.onJobUpdate((update) => dispatch({ type: 'update', update }))
     const offHistory = window.kerf.onHistoryChanged(refreshHistory)
+    const offPull = window.kerf.onAiPull((update) => setPulls((current) => ({ ...current, [update.model]: update })))
     return () => {
       window.clearInterval(timer)
       offUpdate()
       offHistory()
+      offPull()
     }
   }, [refreshHistory])
 
@@ -113,7 +121,6 @@ export function App() {
   }, [receive])
 
   const pick = useCallback((tool: ToolId) => void window.kerf.pickFiles(tool).then((result) => receive(tool, result)), [receive])
-  const pickFolder = useCallback((tool: ToolId) => void window.kerf.pickFolder(tool).then((result) => receive(tool, result)), [receive])
   const paste = useCallback((tool: ToolId) => void window.kerf.readClipboardFiles(tool).then((result) => {
     if (result.files.length === 0 && result.skipped.length === 0) dispatch({ type: 'notice', tool, text: 'In der Zwischenablage liegt keine Datei und kein Bild' })
     else receive(tool, result)
@@ -139,7 +146,7 @@ export function App() {
 
   useEffect(() => {
     let timer: number | undefined
-    const target = (): ToolId => (navRef.current === 'history' ? lastTool.current : navRef.current)
+    const target = (): ToolId => (navRef.current === 'history' || navRef.current === 'settings' ? lastTool.current : navRef.current)
     const onPaste = (event: ClipboardEvent) => {
       if (isEditable(event.target)) return
       window.clearTimeout(timer)
@@ -174,6 +181,17 @@ export function App() {
 
   const cancel = useCallback((id: string) => void window.kerf.cancelJob(id), [])
 
+  const saveSettings = useCallback(async (patch: SettingsPatch) => {
+    setSettings(await window.kerf.saveSettings(patch))
+  }, [])
+
+  const dismissPull = useCallback((model: string) => {
+    setPulls((current) => {
+      const { [model]: _removed, ...rest } = current
+      return rest
+    })
+  }, [])
+
   const api: AppApi = useMemo(
     () => ({
       state,
@@ -181,11 +199,14 @@ export function App() {
       nav,
       go: setNav,
       caps,
+      settings,
+      saveSettings,
+      pulls,
+      dismissPull,
       history,
       refreshHistory,
       receive,
       pick,
-      pickFolder,
       paste,
       drop,
       run,
@@ -193,7 +214,7 @@ export function App() {
       askForget: setForget,
       askClearHistory: () => setClearAsk(true)
     }),
-    [state, nav, caps, history, refreshHistory, receive, pick, pickFolder, paste, drop, run, cancel]
+    [state, nav, caps, settings, saveSettings, pulls, dismissPull, history, refreshHistory, receive, pick, paste, drop, run, cancel]
   )
 
   const busy = useMemo(() => {

@@ -7,49 +7,49 @@ import { useApp } from '../context'
 interface Props {
   tool: ToolId
   children?: ReactNode
+  start?: ReactNode
+  top?: ReactNode
   bar?: ReactNode
   hasFiles: boolean
   disabled?: boolean
-  allowFolders?: boolean
   headRight?: ReactNode
   dropLabel?: string
+  subtitle?: string
 }
 
-export function Page({ tool, children, bar, hasFiles, disabled, allowFolders = true, headRight, dropLabel }: Props) {
+export function Page({ tool, children, start, top, bar, hasFiles, disabled, headRight, dropLabel, subtitle }: Props) {
   const app = useApp()
   const meta = toolMeta(tool)
   const state = app.state[tool]
+  const showStart = !hasFiles && start !== undefined
   return (
     <>
       <main className="app__main">
         <header className="app__head">
           <div>
             <h1 className="title-lg app__title">{meta.title}</h1>
-            <p className="app__sub">{meta.subtitle}</p>
+            <p className="app__sub">{subtitle ?? meta.subtitle}</p>
           </div>
           {headRight}
         </header>
-        <div className="app__scroll">
-          <Dropzone
-            compact={hasFiles}
-            disabled={disabled}
-            label={dropLabel ?? 'Dateien hier ablegen'}
-            formats={meta.acceptLabel}
-            allowFolders={allowFolders}
-            onPick={() => app.pick(tool)}
-            onPickFolder={() => app.pickFolder(tool)}
-            onPaste={() => app.paste(tool)}
-            onDropFiles={(files) => app.drop(tool, files)}
-          />
+        <div className={`app__scroll${showStart ? ' app__scroll--start' : ''}`}>
           {state.notice ? (
             <Notice tone="warning" onClose={() => app.dispatch({ type: 'notice', tool, text: null })}>
               {state.notice}
             </Notice>
           ) : null}
-          {children}
+          {showStart ? (
+            start
+          ) : (
+            <>
+              {top}
+              <Dropzone compact disabled={disabled} label={dropLabel ?? 'Dateien hier ablegen'} onPick={() => app.pick(tool)} onDropFiles={(files) => app.drop(tool, files)} />
+              {children}
+            </>
+          )}
         </div>
       </main>
-      {bar}
+      {showStart ? null : bar}
     </>
   )
 }

@@ -137,6 +137,62 @@ export function commonTargets(paths: string[], caps: Pick<Capabilities, 'libreof
   return first.filter((target) => lists.every((list) => list.some((other) => other.id === target.id)))
 }
 
+export interface SourceFormat {
+  id: string
+  label: string
+  group: string
+}
+
+export const SOURCE_FORMATS: SourceFormat[] = [
+  ...['png', 'jpg', 'webp', 'avif', 'gif', 'tiff', 'bmp', 'svg', 'heic', 'ico'].map((id) => ({ id, label: id === 'webp' ? 'WebP' : id.toUpperCase(), group: 'Bild' })),
+  { id: 'pdf', label: 'PDF', group: 'Dokument' },
+  ...['docx', 'xlsx', 'pptx', 'odt', 'rtf', 'doc', 'xls', 'ppt'].map((id) => ({ id, label: id.toUpperCase(), group: 'Office' })),
+  ...['md', 'html', 'txt'].map((id) => ({ id, label: id.toUpperCase(), group: 'Text' })),
+  ...['csv', 'json', 'yaml', 'xml'].map((id) => ({ id, label: id.toUpperCase(), group: 'Daten' })),
+  ...['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac'].map((id) => ({ id, label: id.toUpperCase(), group: 'Audio' })),
+  ...['mp4', 'mkv', 'webm', 'mov', 'avi'].map((id) => ({ id, label: id === 'webm' ? 'WebM' : id.toUpperCase(), group: 'Video' }))
+]
+
+export const KIND_LABEL: Record<SourceKind, string> = {
+  image: 'Bild',
+  pdf: 'Dokument',
+  writer: 'Textdokument',
+  calc: 'Tabelle',
+  impress: 'Präsentation',
+  visio: 'Diagramm',
+  markdown: 'Markdown-Text',
+  html: 'Webseite',
+  txt: 'Reiner Text',
+  csv: 'Tabelle als Text',
+  json: 'Daten',
+  yaml: 'Daten',
+  xml: 'Daten',
+  audio: 'Audio',
+  video: 'Video'
+}
+
+export function describeSource(extension: string): { label: string; tag: string; kind: SourceKind | null } {
+  const ext = canonical(extension.toLowerCase())
+  const known = SOURCE_FORMATS.find((entry) => entry.id === ext)
+  const kind = sourceKind(ext)
+  return { label: known?.label ?? ext.toUpperCase(), tag: kind ? KIND_LABEL[kind] : 'Datei', kind }
+}
+
+export function anyTargets(caps: Pick<Capabilities, 'libreoffice' | 'ffmpeg'> | null): AvailableTarget[] {
+  const seen = new Set<string>()
+  const result: AvailableTarget[] = []
+  for (const ext of ['jpg', 'png', 'pdf', 'docx', 'odt', 'xlsx', 'pptx', 'odp', 'md', 'csv', 'json', 'mp3', 'mp4']) {
+    for (const target of targetsFor(ext, caps)) {
+      if (seen.has(target.id)) continue
+      seen.add(target.id)
+      result.push(target)
+    }
+  }
+  const order = ['png', 'jpg', 'webp', 'avif', 'gif', 'tiff', 'bmp', 'ico', 'favicon', 'pdf']
+  const rank = (id: string) => (order.includes(id) ? order.indexOf(id) : order.length)
+  return result.map((target, index) => ({ target, index })).sort((a, b) => rank(a.target.id) - rank(b.target.id) || a.index - b.index).map((entry) => entry.target)
+}
+
 export function lossWarning(source: string, target: string): string | null {
   const from = canonical(source.toLowerCase())
   if (target === 'jpg' && ['png', 'webp', 'avif', 'gif', 'svg', 'ico', 'tiff', 'heic'].includes(from)) return 'Transparenz geht verloren. Transparente Stellen werden weiß.'

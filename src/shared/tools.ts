@@ -1,6 +1,6 @@
 export type ToolId = 'compress' | 'convert' | 'pdf' | 'ocr' | 'metaread' | 'metaclean' | 'redact' | 'hash' | 'archive'
 
-export type NavId = ToolId | 'history'
+export type NavId = ToolId | 'history' | 'settings'
 
 export interface ToolMeta {
   id: ToolId

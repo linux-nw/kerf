@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
-import { Check, Copy, Trash2, X } from 'lucide-react'
+import { Check, ClipboardPaste, Copy, Fingerprint, Trash2, X } from 'lucide-react'
 import type { HashAlgorithm } from '@shared/types'
 import { ActionBar } from '../components/ActionBar'
 import { FileRow } from '../components/FileRow'
+import { PasteHint } from '../components/Dropzone'
 import { Page } from '../components/Page'
-import { copyText, Toggle } from '../components/ui'
+import { ToolDrop } from '../components/ToolDrop'
+import { ChipToggle, copyText, Lbl, Toggle } from '../components/ui'
 import { useApp } from '../context'
 import { isActive, isPending } from '../store'
 
@@ -93,10 +95,42 @@ export function HashView() {
     />
   )
 
+  const startView = (
+    <div className="kf-start kf-start--tight">
+      <ToolDrop tool="hash" layout="row" icon={Fingerprint} label="Datei ablegen, Fingerabdruck erhalten" hint={<>Zum Beispiel einen Download. <PasteHint /></>} />
+      <div className="kf-two kf-two--w">
+        <div className="kf-card">
+          <Lbl aside="Standard: SHA-256">Verfahren</Lbl>
+          <div className="kf-chips" role="group" aria-label="Verfahren">
+            {ALGORITHMS.map((algorithm) => (
+              <ChipToggle key={algorithm.id} on={algorithms.includes(algorithm.id)} onChange={(on) => setAlgorithms(on ? [...algorithms, algorithm.id] : algorithms.filter((entry) => entry !== algorithm.id))}>
+                <span className="kf-mono">{algorithm.label}</span>
+              </ChipToggle>
+            ))}
+          </div>
+          <p>Die Webseite nennt meist einen Hash. Nimm dasselbe Verfahren.</p>
+        </div>
+        <div className="kf-card">
+          <Lbl aside="optional">Vergleichen</Lbl>
+          <label className="kf-input kf-input--mono" style={{ height: 44 }}>
+            <ClipboardPaste className="kf-icon kf-icon--sm" aria-hidden="true" />
+            <input value={expected} onChange={(event) => setExpected(event.target.value)} placeholder="Erwarteten Hash hier einfügen" spellCheck={false} aria-label="Erwarteter Hash" />
+          </label>
+          <div className="kf-ghost" aria-hidden="true">
+            <b>SHA-256</b>
+            <span>3f8a········································c91d</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <Page
       tool="hash"
       hasFiles={state.entries.length > 0}
+      start={startView}
+      subtitle="Mit dem digitalen Fingerabdruck prüfen, ob eine Datei unverändert ist."
       dropLabel="Dateien zum Prüfen ablegen"
       bar={bar}
       headRight={

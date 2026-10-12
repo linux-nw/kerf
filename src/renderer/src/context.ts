@@ -1,6 +1,6 @@
 import { createContext, useContext, type Dispatch } from 'react'
 import type { NavId, ToolId } from '@shared/tools'
-import type { AddResult, Capabilities, HistoryEntry, StartJob } from '@shared/types'
+import type { AddResult, AiPullUpdate, Capabilities, HistoryEntry, Settings, SettingsPatch, StartJob } from '@shared/types'
 import type { Action, AppState } from './store'
 
 export interface ForgetTarget {
@@ -16,11 +16,14 @@ export interface AppApi {
   nav: NavId
   go: (nav: NavId) => void
   caps: Capabilities | null
+  settings: Settings | null
+  saveSettings: (patch: SettingsPatch) => Promise<void>
+  pulls: Record<string, AiPullUpdate>
+  dismissPull: (model: string) => void
   history: HistoryEntry[]
   refreshHistory: () => void
   receive: (tool: ToolId, result: AddResult) => void
   pick: (tool: ToolId) => void
-  pickFolder: (tool: ToolId) => void
   paste: (tool: ToolId) => void
   drop: (tool: ToolId, files: File[]) => void
   run: (tool: ToolId, ids: string[], jobs: StartJob[], options: unknown, groupId?: string | null) => void

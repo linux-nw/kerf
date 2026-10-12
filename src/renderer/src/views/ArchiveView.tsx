@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Info, Lock, Trash2 } from 'lucide-react'
 import { extensionOf } from '@shared/tools'
 import type { ArchiveFormat, ArchiveMode } from '@shared/types'
 import { ActionBar } from '../components/ActionBar'
+import { ArchiveArt } from '../components/art'
+import { Dropzone } from '../components/Dropzone'
 import { FileRow } from '../components/FileRow'
 import { GroupRow } from '../components/GroupRow'
 import { OutputDir } from '../components/OutputDir'
@@ -70,10 +72,57 @@ export function ArchiveView() {
     />
   )
 
+  const twin = (kind: ArchiveMode) => (
+    <Dropzone
+      compact={false}
+      hero
+      art={<ArchiveArt kind={kind} />}
+      label={kind === 'pack' ? 'Packen' : 'Entpacken'}
+      hint={kind === 'pack' ? 'Dateien und Ordner hier ablegen. Kerf macht ein Archiv daraus.' : 'Ein Archiv hier ablegen. Der Inhalt landet in einem neuen Ordner daneben.'}
+      onPick={() => {
+        setMode(kind)
+        app.pick('archive')
+      }}
+      onDropFiles={(files) => {
+        setMode(kind)
+        app.drop('archive', files)
+      }}
+    >
+      <div className="kf-drop__extra" aria-hidden="true">
+        {(kind === 'pack' ? ['ZIP', '7z', 'tar.gz'] : ['ZIP', '7z', 'RAR', 'tar.gz', 'ISO']).map((label, index) => (
+          <span key={label} className={`kf-c kf-c--mono kf-c--static${kind === 'pack' && index === 0 ? ' is-on' : ''}`}>
+            {label}
+          </span>
+        ))}
+        {kind === 'pack' ? (
+          <span className="kf-c kf-c--mono kf-c--static">
+            <Lock className="kf-icon" style={{ strokeWidth: 1.75 }} />
+            Passwort
+          </span>
+        ) : null}
+      </div>
+    </Dropzone>
+  )
+
+  const startView = (
+    <div className="kf-start kf-start--tight">
+      <div className="kf-twin">
+        {twin('pack')}
+        {twin('unpack')}
+      </div>
+      <div className="kf-footnote">
+        <Info className="kf-icon" aria-hidden="true" />
+        Ziehen, klicken oder Strg V. Die Zone, auf die du ablegst, bestimmt, ob gepackt oder entpackt wird.
+      </div>
+    </div>
+  )
+
   return (
     <Page
       tool="archive"
       hasFiles={state.entries.length > 0}
+      start={startView}
+      subtitle="Dateien einpacken oder Pakete öffnen. Mit Passwort, wenn du willst."
       dropLabel={mode === 'pack' ? 'Dateien oder Ordner zum Packen ablegen' : 'Archive zum Entpacken ablegen'}
       bar={bar}
       headRight={

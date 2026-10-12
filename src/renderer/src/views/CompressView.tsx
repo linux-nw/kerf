@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
-import { Settings2, Trash2 } from 'lucide-react'
+import { Check, Settings2, Shrink, Trash2 } from 'lucide-react'
 import { parseTargetBytes } from '@shared/format'
 import type { CompressOptions, PresetId } from '@shared/types'
 import { ActionBar } from '../components/ActionBar'
 import { FileRow } from '../components/FileRow'
 import { Page } from '../components/Page'
-import { Field, Seg, Switch } from '../components/ui'
+import { ToolDrop } from '../components/ToolDrop'
+import { Field, Lbl, Seg, Switch } from '../components/ui'
 import { useApp } from '../context'
 import { isActive, isPending } from '../store'
 
@@ -14,6 +15,12 @@ const PRESETS: Array<{ id: PresetId; label: string; title: string }> = [
   { id: 'standard', label: 'Standard', title: 'Gute Balance aus Größe und Qualität' },
   { id: 'print', label: 'Druck', title: 'Hohe Qualität für den Druck' },
   { id: 'target', label: 'Zielgröße', title: 'Kerf sucht die beste Qualität unter deiner Grenze' }
+]
+
+const CARDS: Array<{ id: PresetId; title: string; text: string; left: number | null }> = [
+  { id: 'email', title: 'E-Mail', text: 'Stark verkleinert. Gut lesbar am Bildschirm, passt in jeden Anhang.', left: 12 },
+  { id: 'standard', title: 'Standard', text: 'Gute Balance aus Größe und Qualität für fast alles.', left: 35 },
+  { id: 'print', title: 'Druck', text: 'Nur das Überflüssige weg. Bilder bleiben scharf.', left: 68 }
 ]
 
 export function CompressView() {
@@ -87,10 +94,66 @@ export function CompressView() {
     />
   )
 
+  const startView = (
+    <div className="kf-start kf-start--tight">
+      <ToolDrop tool="compress" layout="row" icon={Shrink} label="Dateien hier ablegen">
+        <div className="kf-fmt kf-drop__extra" aria-label="Unterstützte Formate">
+          {['PDF', 'JPG', 'PNG', 'WebP', 'AVIF', 'DOCX', 'PPTX', 'XLSX'].map((format) => (
+            <span key={format}>{format}</span>
+          ))}
+        </div>
+      </ToolDrop>
+      <div className="kf-sec">
+        <Lbl>Wie stark soll es schrumpfen?</Lbl>
+        <div className="kf-cards4" role="radiogroup" aria-label="Stärke">
+          {CARDS.map((card) => (
+            <button key={card.id} type="button" role="radio" aria-checked={options.preset === card.id} className={`kf-card kf-card--tight${options.preset === card.id ? ' is-on' : ''}`} onClick={() => setOptions({ ...options, preset: card.id })}>
+              <span className="kf-card__hd">
+                <h3>{card.title}</h3>
+                {options.preset === card.id ? (
+                  <span className="kf-chk">
+                    <Check className="kf-icon" aria-hidden="true" />
+                  </span>
+                ) : null}
+              </span>
+              <p className="kf-fix">{card.text}</p>
+              <span className="kf-bars" aria-hidden="true">
+                <span className="kf-bb is-orig"><i /></span>
+                <span className="kf-bb"><i style={{ width: `${card.left}%` }} /></span>
+                <span className="kf-pct"><span>Typisch übrig</span><b>~ {card.left} %</b></span>
+              </span>
+            </button>
+          ))}
+          <div className={`kf-card kf-card--tight${options.preset === 'target' ? ' is-on' : ''}`} onClick={() => setOptions({ ...options, preset: 'target' })}>
+            <div className="kf-card__hd">
+              <h3>Zielgröße</h3>
+              {options.preset === 'target' ? (
+                <span className="kf-chk">
+                  <Check className="kf-icon" aria-hidden="true" />
+                </span>
+              ) : null}
+            </div>
+            <p className="kf-fix">Du nennst die Grenze, Kerf probiert Stufen durch.</p>
+            <span className={`kf-input kf-input--mono${targetInvalid ? ' is-error' : ''}`}>
+              <span className="kf-muted">unter</span>
+              <input inputMode="decimal" value={targetText} onFocus={() => setOptions({ ...options, preset: 'target' })} onChange={(event) => setTargetText(event.target.value)} aria-label="Zielgröße" />
+              <select className="kf-unit" value={targetUnit} onChange={(event) => setTargetUnit(event.target.value as 'KB' | 'MB')} aria-label="Einheit">
+                <option>KB</option>
+                <option>MB</option>
+              </select>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <Page
       tool="compress"
       hasFiles={state.entries.length > 0}
+      start={startView}
+      subtitle="Dateien kleiner machen, ohne das Original anzufassen."
       dropLabel="Dateien zum Komprimieren ablegen"
       bar={bar}
       headRight={
