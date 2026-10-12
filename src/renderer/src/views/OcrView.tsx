@@ -6,6 +6,7 @@ import type { OcrOptions, OcrOutput, OcrResult } from '@shared/types'
 import { ActionBar } from '../components/ActionBar'
 import { FileRow } from '../components/FileRow'
 import { OutputDir } from '../components/OutputDir'
+import { Popover } from '../components/Popover'
 import { Page } from '../components/Page'
 import { copyText, IconButton, Toggle } from '../components/ui'
 import { useApp } from '../context'
@@ -129,10 +130,10 @@ export function OcrView() {
       running={running}
       onStart={start}
       onCancel={() => state.entries.forEach((entry) => isActive(entry.update) && app.cancel(entry.info.id))}
-      extra={
-        <div className="kf-ocrbar">
-          <div className="kf-targets__group">
-            <span className="kf-overline">Sprachen im Dokument</span>
+      options={
+        <>
+          <Popover label="Sprachen" summary={languages.map((code) => OCR_LANGUAGES.find((entry) => entry.code === code)?.label ?? code).join(' + ')} width={420}>
+            <p className="kf-caption">Alles anhaken, was im Dokument vorkommt. Mehrere gehen gleichzeitig.</p>
             <div className="kf-targets__chips" role="group" aria-label="Sprachen">
               {languageList.map((entry) => (
                 <Toggle key={entry.code} checked={languages.includes(entry.code)} onChange={(on) => toggleLanguage(entry.code, on)}>
@@ -140,9 +141,8 @@ export function OcrView() {
                 </Toggle>
               ))}
             </div>
-          </div>
-          <div className="kf-targets__group">
-            <span className="kf-overline">Ergebnis als</span>
+          </Popover>
+          <Popover label="Ergebnis" summary={OUTPUTS.filter((entry) => outputs.includes(entry.id)).map((entry) => entry.label.replace('Durchsuchbares ', '')).join(', ') || 'nichts gewählt'}>
             <div className="kf-targets__chips" role="group" aria-label="Ausgabe">
               {OUTPUTS.map((entry) => (
                 <Toggle key={entry.id} checked={outputs.includes(entry.id)} onChange={(on) => setOutputs(on ? [...outputs, entry.id] : outputs.filter((id) => id !== entry.id))}>
@@ -150,14 +150,10 @@ export function OcrView() {
                 </Toggle>
               ))}
             </div>
-          </div>
-        </div>
-      }
-      options={
-        <>
-          <Toggle checked={skipTextPages} onChange={setSkipTextPages} title="PDF-Seiten, die schon Text haben, werden nicht neu erkannt">
-            Seiten mit Text überspringen
-          </Toggle>
+            <Toggle checked={skipTextPages} onChange={setSkipTextPages} title="PDF-Seiten, die schon Text haben, werden nicht neu erkannt">
+              Seiten mit Text überspringen
+            </Toggle>
+          </Popover>
           <OutputDir value={outputDir} onChange={setOutputDir} />
         </>
       }
