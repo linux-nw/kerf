@@ -142,7 +142,7 @@ export function PdfView() {
     }
     if (mode === 'merge') {
       const id = crypto.randomUUID()
-      app.run('pdf', pending.map((entry) => entry.info.id), [{ id, paths: pending.map((entry) => entry.info.path) }], options, id)
+      app.run('pdf', [], [{ id, paths: pending.map((entry) => entry.info.path) }], options, id)
       return
     }
     app.run('pdf', jobsFor.map((entry) => entry.info.id), jobsFor.map((entry) => ({ id: entry.info.id, paths: [entry.info.path] })), options)

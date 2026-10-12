@@ -128,7 +128,8 @@ export function FileRow({ tool, entry, delta = false, keepsHistory = true, onRem
   else if (!text && status === 'done' && update?.detail) text = update.detail
   else if (!text && status === 'running' && update?.step) text = update.step
 
-  const sub = !delta && status === 'done' && out ? `→ ${baseName(out)}` : formatBytes(info.size)
+  const finished = status === 'done' || status === 'nogain' || status === 'larger'
+  const sub = !delta && status === 'done' && out ? `→ ${baseName(out)}` : delta && finished ? null : formatBytes(info.size)
   const percent = update?.percent ?? 0
 
   return (
@@ -138,7 +139,7 @@ export function FileRow({ tool, entry, delta = false, keepsHistory = true, onRem
         <span className="kf-file__name" title={info.path}>
           {info.name}
         </span>
-        <span className="kf-file__meta">{sub}</span>
+        {sub ? <span className="kf-file__meta">{sub}</span> : null}
       </div>
       {state}
       <div className="kf-file__actions" onClick={(event) => event.stopPropagation()}>

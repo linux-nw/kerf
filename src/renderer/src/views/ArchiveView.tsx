@@ -30,7 +30,7 @@ export function ArchiveView() {
     const options = { mode, format, password: noPassword ? '' : password, name, outputDir }
     if (mode === 'pack') {
       const id = crypto.randomUUID()
-      app.run('archive', pending.map((entry) => entry.info.id), [{ id, paths: pending.map((entry) => entry.info.path) }], options, id)
+      app.run('archive', [], [{ id, paths: pending.map((entry) => entry.info.path) }], options, id)
     } else {
       app.run('archive', unpackable.map((entry) => entry.info.id), unpackable.map((entry) => ({ id: entry.info.id, paths: [entry.info.path] })), options)
     }

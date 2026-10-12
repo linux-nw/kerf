@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { BrowserWindow, app, dialog, ipcMain, session, shell } from 'electron'
 import { TOOLS, type ToolId } from '@shared/tools'
 import type { AddResult, BlobInput, Capabilities, MetaReport, NetworkStatus, PdfInfo, StartJob, TextMatch } from '@shared/types'
@@ -48,7 +48,8 @@ function isToolId(value: unknown): value is ToolId {
 }
 
 function startupPaths(argv: string[]): string[] {
-  return argv.slice(app.isPackaged ? 1 : 2).filter((arg) => !arg.startsWith('-') && arg.length > 1)
+  const appPath = resolve(app.getAppPath())
+  return argv.slice(app.isPackaged ? 1 : 2).filter((arg) => !arg.startsWith('-') && arg.length > 1 && resolve(arg) !== appPath && resolve(arg) !== resolve('.'))
 }
 
 function installNetworkBlock(): void {
