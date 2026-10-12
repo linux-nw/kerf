@@ -2,7 +2,7 @@
 
 Kerf ist ein Desktop-Werkzeug für Dateien, das komplett lokal arbeitet: PDFs und Bilder verkleinern, zwischen fast allen Formaten konvertieren und ein paar Dinge erledigen, für die man sonst eine Website mit Upload-Feld öffnet. Nichts verlässt den Rechner. Kein Konto, kein Netzwerk, keine Telemetrie.
 
-> **Status: in Planung.** Es gibt noch keinen Code. Dieses Repo enthält bisher das Design System und den Plan.
+> **Status: früher Prototyp.** Das Modul "PDFs komprimieren" funktioniert (Presets, Zielgröße, mehrere Dateien, Abbrechen). Alle anderen Module stehen in der Seitenleiste als "bald".
 
 ## Der Name
 
@@ -24,23 +24,39 @@ Die vollständige Liste mit Stufen (MVP, V1, später) steht in [`design-system/m
 
 1. Alles bleibt lokal. Die App blockiert Netzwerkzugriffe und zeigt das auf jedem Screen an.
 2. Originale werden nie überschrieben.
-3. Die Verarbeitung läuft über bewährte Programme (Ghostscript, LibreOffice, FFmpeg, Pandoc, Tesseract), die mit der App ausgeliefert werden. Kerf ist die Oberfläche und die Steuerung darum.
+3. Die Verarbeitung läuft in der App selbst oder über bewährte Programme (LibreOffice, FFmpeg, Pandoc, Tesseract), die mit der App ausgeliefert werden. PDFs werden aktuell in reinem JavaScript komprimiert (pdf-lib und sharp), ohne Ghostscript.
 4. Einfach bedienbar: Dateien ablegen, Preset wählen, starten.
 
-## Geplante Technik
+## Technik
 
-Noch nicht entschieden, aktueller Stand der Überlegung:
+- Electron, React 19 und TypeScript, gebaut mit electron-vite
+- Netzwerk ist doppelt gesperrt: Content-Security-Policy im Fenster und ein Filter im Hauptprozess, der jede nicht lokale Anfrage abbricht und zählt
+- Fenster mit `contextIsolation` und `sandbox`, die Oberfläche hat keinen Zugriff auf Node
+- PDF-Kompression läuft in einem Worker-Thread, damit die Oberfläche flüssig bleibt, und lässt sich abbrechen
+- Schriften (IBM Plex) und alle Ressourcen liegen in der App
 
-- Desktop-App mit TypeScript, vermutlich Electron
-- Die Verarbeitungsprogramme laufen als Kindprozesse, Fortschritt und Ergebnisse gehen an die Oberfläche
-- Schriften und alle Ressourcen werden mit der App ausgeliefert
+Offen ist die Lizenz. Sobald Ghostscript, FFmpeg oder Pandoc ausgeliefert werden, beeinflusst das (A)GPL, wie Kerf verteilt werden darf.
 
-Offen ist auch die Lizenz. Ghostscript steht unter der AGPL, das beeinflusst, wie Kerf verteilt werden darf.
+## Entwickeln
+
+```
+npm install
+npm run dev
+npm test
+npm run build
+```
+
+Windows 11 ist die Zielplattform. Ein Installer ist noch nicht eingerichtet.
 
 ## Repo-Struktur
 
 ```
 design-system/   Design System: Tokens, Komponenten, Screens, Funktionsumfang
+src/main/        Hauptprozess, Auftragswarteschlange, PDF-Engine
+src/preload/     Brücke zur Oberfläche
+src/renderer/    Oberfläche (React)
+src/shared/      Typen und Formatierung
+tests/           Tests
 ```
 
 Einstieg ins Design System ist [`design-system/README.md`](design-system/README.md).
