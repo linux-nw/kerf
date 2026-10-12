@@ -11,7 +11,9 @@ import {
   type PDFObject
 } from 'pdf-lib'
 import sharp from 'sharp'
-import type { JobErrorCode } from '@shared/types'
+import { CancelledError, EngineError } from '../../errors'
+
+export { CancelledError, EngineError }
 
 export interface PdfCompressSettings {
   dpi: number
@@ -27,23 +29,6 @@ export interface PdfCompressStats {
 export interface PdfCompressHooks {
   onProgress?: (fraction: number, step: string) => void
   signal?: AbortSignal
-}
-
-export class EngineError extends Error {
-  readonly code: JobErrorCode
-
-  constructor(code: JobErrorCode, message: string) {
-    super(message)
-    this.code = code
-    this.name = 'EngineError'
-  }
-}
-
-export class CancelledError extends Error {
-  constructor() {
-    super('cancelled')
-    this.name = 'CancelledError'
-  }
 }
 
 interface ImageTarget {

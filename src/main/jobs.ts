@@ -1,26 +1,14 @@
-import { existsSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
-import type { CompressOptions, JobErrorCode, JobStatus, JobUpdate, StartJob } from '@shared/types'
-import {
-  CancelledError,
-  EngineError,
-  type PdfCompressHooks,
-  type PdfCompressSettings,
-  type PdfCompressStats
-} from './engines/pdf/compress'
-import { decideOutcome, nextOutputPath } from './engines/pdf/output'
-import { PRESETS, TARGET_LADDER, type Attempt } from './engines/pdf/presets'
-
-export type CompressFn = (
-  input: Uint8Array,
-  settings: PdfCompressSettings,
-  hooks: PdfCompressHooks
-) => Promise<{ bytes: Uint8Array; stats: PdfCompressStats }>
+import { stat } from 'node:fs/promises'
+import { basename } from 'node:path'
+import type { ToolId } from '@shared/tools'
+import type { JobErrorCode, JobStatus, JobUpdate, StartJob } from '@shared/types'
+import { CancelledError, EngineError } from './errors'
+import type { HistoryStore } from './history'
+import type { ToolOutcome, ToolRunner } from './tools/types'
 
 export type Emit = (update: JobUpdate) => void
 
-function update(id: string, status: JobStatus, percent: number, extra: Partial<JobUpdate> = {}): JobUpdate {
+export function makeUpdate(id: string, status: JobStatus, percent: number, extra: Partial<JobUpdate> = {}): JobUpdate {
   return {
     id,
     status,
@@ -28,122 +16,127 @@ function update(id: string, status: JobStatus, percent: number, extra: Partial<J
     step: null,
     outputPath: null,
     outputSize: null,
+    outputs: [],
     errorCode: null,
     detail: null,
+    data: null,
     ...extra
   }
 }
 
-function attemptsFor(options: CompressOptions): Attempt[] {
-  if (options.preset === 'target') return options.targetBytes ? TARGET_LADDER : [PRESETS.standard]
-  return [PRESETS[options.preset]]
+async function sizeOf(path: string): Promise<number | null> {
+  try {
+    const info = await stat(path)
+    return info.isFile() ? info.size : null
+  } catch {
+    return null
+  }
 }
 
-export async function processJob(
+async function totalSize(paths: string[]): Promise<number | null> {
+  let total = 0
+  for (const path of paths) {
+    const size = await sizeOf(path)
+    if (size === null) return null
+    total += size
+  }
+  return total
+}
+
+function describeInput(paths: string[]): string {
+  const first = basename(paths[0] ?? '')
+  return paths.length > 1 ? `${first} und ${paths.length - 1} weitere` : first
+}
+
+export async function runJob(
+  tool: ToolId,
   job: StartJob,
-  options: CompressOptions,
-  compress: CompressFn,
+  options: unknown,
+  runner: ToolRunner,
+  history: HistoryStore | null,
   signal: AbortSignal,
   emit: Emit
 ): Promise<void> {
-  emit(update(job.id, 'running', 0, { step: 'Datei wird gelesen' }))
-
-  let input: Buffer
-  try {
-    input = await readFile(job.path)
-  } catch {
-    emit(update(job.id, 'error', 0, { errorCode: 'missing', detail: 'Die Datei wurde nicht gefunden' }))
-    return
+  emit(makeUpdate(job.id, 'running', 0))
+  let lastPercent = 0
+  const progress = (percent: number, step: string | null = null) => {
+    lastPercent = Math.max(lastPercent, Math.min(99, Math.round(percent)))
+    emit(makeUpdate(job.id, 'running', lastPercent, { step }))
   }
 
-  const attempts = attemptsFor(options)
-  const wantsTarget = options.preset === 'target' && options.targetBytes !== null
-  let best: Uint8Array | null = null
-  let reachedTarget = false
-
+  let outcome: ToolOutcome
   try {
-    for (const [index, attempt] of attempts.entries()) {
-      if (signal.aborted) throw new CancelledError()
-      const result = await compress(
-        input,
-        { dpi: attempt.dpi, quality: attempt.quality, stripMetadata: options.stripMetadata },
-        {
-          signal,
-          onProgress: (fraction, step) => {
-            const percent = Math.min(99, Math.round(((index + fraction) / attempts.length) * 100))
-            const label = attempts.length > 1 ? `${step} (Versuch ${index + 1} von ${attempts.length})` : step
-            emit(update(job.id, 'running', percent, { step: label }))
-          }
-        }
-      )
-      best = result.bytes
-      if (wantsTarget && options.targetBytes !== null && best.length <= options.targetBytes) {
-        reachedTarget = true
-        break
-      }
-      if (!wantsTarget) break
-    }
+    if (signal.aborted) throw new CancelledError()
+    outcome = await runner(job, options, { signal, progress })
   } catch (error) {
-    if (error instanceof CancelledError) {
-      emit(update(job.id, 'cancelled', 0))
+    if (error instanceof CancelledError || signal.aborted) {
+      emit(makeUpdate(job.id, 'cancelled', 0))
       return
     }
     const code: JobErrorCode = error instanceof EngineError ? error.code : 'unknown'
-    emit(update(job.id, 'error', 0, { errorCode: code, detail: error instanceof Error ? error.message : String(error) }))
+    emit(makeUpdate(job.id, 'error', 0, { errorCode: code, detail: error instanceof Error ? error.message : String(error) }))
     return
   }
 
-  if (!best) {
-    emit(update(job.id, 'error', 0, { errorCode: 'unknown', detail: 'Kein Ergebnis erzeugt' }))
-    return
+  const status = outcome.status ?? 'done'
+  const first = outcome.outputs[0] ?? null
+  const outputSize = outcome.outputSize !== undefined ? outcome.outputSize : first ? await sizeOf(first) : null
+
+  if (status === 'done' && first && outcome.history !== false && history) {
+    await history.add({
+      id: job.id,
+      tool,
+      time: Date.now(),
+      inputName: describeInput(job.paths),
+      inputSize: await totalSize(job.paths),
+      outputPath: first,
+      outputSize,
+      summary: outcome.summary ?? ''
+    })
   }
 
-  const outcome = decideOutcome(input.length, best.length)
-  if (outcome !== 'done') {
-    emit(update(job.id, outcome, 100, { outputSize: best.length }))
-    return
-  }
-
-  try {
-    const outputPath = nextOutputPath(job.path, options.outputDir, existsSync)
-    await mkdir(dirname(outputPath), { recursive: true })
-    const partial = `${outputPath}.part`
-    await writeFile(partial, best)
-    await rename(partial, outputPath)
-    const missedTarget = wantsTarget && !reachedTarget
-    emit(
-      update(job.id, 'done', 100, {
-        outputPath,
-        outputSize: best.length,
-        detail: missedTarget ? 'Zielgröße nicht erreicht' : null
-      })
-    )
-  } catch (error) {
-    emit(update(job.id, 'error', 0, { errorCode: 'write', detail: error instanceof Error ? error.message : String(error) }))
-  }
+  emit(
+    makeUpdate(job.id, status, 100, {
+      outputPath: first,
+      outputs: outcome.outputs,
+      outputSize,
+      detail: outcome.detail ?? null,
+      data: outcome.data ?? null
+    })
+  )
 }
 
 export class JobRunner {
   private readonly controllers = new Map<string, AbortController>()
 
   constructor(
-    private readonly compress: CompressFn,
-    private readonly concurrency: number
+    private readonly runners: Partial<Record<ToolId, ToolRunner>>,
+    private readonly history: HistoryStore | null,
+    private readonly concurrency: (tool: ToolId) => number
   ) {}
 
-  async start(jobs: StartJob[], options: CompressOptions, emit: Emit): Promise<void> {
+  async start(tool: ToolId, jobs: StartJob[], options: unknown, emit: Emit): Promise<void> {
+    const runner = this.runners[tool]
     for (const job of jobs) {
       this.controllers.set(job.id, new AbortController())
-      emit(update(job.id, 'waiting', 0))
+      emit(makeUpdate(job.id, 'waiting', 0))
+    }
+    if (!runner) {
+      for (const job of jobs) {
+        emit(makeUpdate(job.id, 'error', 0, { errorCode: 'unsupported', detail: 'Dieses Werkzeug ist nicht verfügbar' }))
+        this.controllers.delete(job.id)
+      }
+      return
     }
     const queue = [...jobs]
-    const workers = Array.from({ length: Math.max(1, Math.min(this.concurrency, jobs.length)) }, async () => {
+    const count = Math.max(1, Math.min(this.concurrency(tool), jobs.length))
+    const workers = Array.from({ length: count }, async () => {
       for (let job = queue.shift(); job; job = queue.shift()) {
         const controller = this.controllers.get(job.id)
         if (!controller || controller.signal.aborted) {
-          emit(update(job.id, 'cancelled', 0))
+          emit(makeUpdate(job.id, 'cancelled', 0))
         } else {
-          await processJob(job, options, this.compress, controller.signal, emit)
+          await runJob(tool, job, options, runner, this.history, controller.signal, emit)
         }
         this.controllers.delete(job.id)
       }
