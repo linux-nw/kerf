@@ -1,0 +1,19 @@
+<!-- @dsCard group="Eingabe" height=560 subtitle="Textfeld, Einheit, Fehler, Regler, Schalter" -->
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"></head>
+<body style="margin:0">
+<div class="kf-stage" style="gap:var(--space-8)">
+<div class="kf-col" style="max-width:320px">
+<div class="kf-field"><label class="kf-field__label">Zielgröße</label><div class="kf-input kf-input--mono"><input value="500" aria-label="Zielgröße"><span class="kf-input__unit">KB</span></div><span class="kf-field__help">Das Tool rechnet so lange herunter, bis die Datei darunter liegt.</span></div>
+<div class="kf-field"><label class="kf-field__label">Ausgabeordner</label><div class="kf-input kf-input--mono"><input value="C:\Users\Noah\Dokumente\klein" aria-label="Ausgabeordner"><svg class="kf-icon kf-icon--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></div></div>
+<div class="kf-field"><label class="kf-field__label">Passwort</label><div class="kf-input is-error"><input value="••••" aria-label="Passwort"></div><span class="kf-field__help is-error">Das Passwort passt nicht. Versuch es noch einmal.</span></div>
+<div class="kf-field"><label class="kf-field__label">Fokus</label><div class="kf-input is-focus"><input value="rechnung-{datum}" aria-label="Namensschema"></div></div>
+</div>
+<div class="kf-col" style="max-width:320px;gap:var(--space-5)">
+<div class="kf-field"><div class="kf-row" style="justify-content:space-between;flex-wrap:nowrap"><label class="kf-field__label">Bildauflösung</label><span class="kf-mono" style="font-size:13px">150 dpi</span></div><div class="kf-slider"><div class="kf-slider__track"></div><div class="kf-slider__fill" style="width:42%"></div><div class="kf-slider__thumb" style="left:42%"></div></div><div class="kf-row" style="justify-content:space-between;flex-wrap:nowrap"><span class="kf-caption">72</span><span class="kf-caption">300</span></div></div>
+<div class="kf-switch is-on"><span class="kf-switch__box"></span>Metadaten entfernen</div>
+<div class="kf-switch"><span class="kf-switch__box"></span>Graustufen</div>
+<div class="kf-field"><label class="kf-field__label">Sprache für Texterkennung</label><div class="kf-input"><input value="Deutsch" aria-label="Sprache"><svg class="kf-icon kf-icon--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg></div></div>
+</div>
+</div>
+</body></html>

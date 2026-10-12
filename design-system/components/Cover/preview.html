@@ -1,0 +1,31 @@
+<!-- @dsCard height=304 -->
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+body{margin:0;background:var(--surface-0)}
+svg{display:block}
+.blk{rx:var(--radius-lg)}
+.b-accent{fill:var(--accent)}
+.b-steel{fill:var(--line-strong)}
+.b-ink{fill:var(--ink)}
+.b-local{fill:var(--success)}
+.b-muted{fill:var(--ink-muted)}
+.cut{fill:var(--surface-0)}
+.name{font-family:var(--font-sans);font-size:120px;font-weight:600;letter-spacing:-.03em;fill:var(--ink)}
+.tag{font-family:var(--font-sans);font-size:14px;fill:var(--ink-muted)}
+</style></head>
+<body>
+<svg viewBox="0 0 960 304" width="960" height="304" role="img" aria-label="Kerf">
+<desc>Blöcke: accent 224, line-strong 72, ink 280, success 112, ink-muted 240 Breite, 136 hoch, unten mit radius-lg. Anordnung: Band aus ungleichen Schnittbreiten, oben randlos, Lücken von 8 px, wie Spalten im Material. Muster: Punktraster im Abstand space-6 aus dem Hintergrund ausgeschnitten, weil das Werkzeug technisch und präzise auftritt. Maße: space-6 Raster, radius-lg Ecken, Name 120 px.</desc>
+<defs><pattern id="dots" x="312" y="0" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="12" cy="12" r="2" class="cut"/></pattern></defs>
+<rect class="blk b-accent" x="0" y="-24" width="224" height="136"/>
+<rect class="blk b-steel" x="232" y="-24" width="72" height="136"/>
+<rect class="blk b-ink" x="312" y="-24" width="280" height="136"/>
+<rect class="blk" x="312" y="-24" width="280" height="136" fill="url(#dots)"/>
+<rect class="blk b-local" x="600" y="-24" width="112" height="136"/>
+<rect class="blk b-muted" x="720" y="-24" width="240" height="136"/>
+<text class="name" x="28" y="232">Kerf</text>
+<text class="tag" x="32" y="268">Alles lokal. Jede Datei. Ein Werkzeug.</text>
+</svg>
+</body></html>
