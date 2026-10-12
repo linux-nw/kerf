@@ -7,7 +7,7 @@ import { CancelledError, EngineError } from '../src/main/errors'
 import { HistoryStore } from '../src/main/history'
 import { JobRunner } from '../src/main/jobs'
 import { createCompressTool, type CompressFn } from '../src/main/tools/compress'
-import type { ToolRunner } from '../src/main/tools/types'
+import type { ToolContext, ToolRunner } from '../src/main/tools/types'
 import type { CompressOptions, JobUpdate } from '../src/shared/types'
 
 const baseOptions: CompressOptions = { preset: 'standard', targetBytes: null, stripMetadata: false, outputDir: null }

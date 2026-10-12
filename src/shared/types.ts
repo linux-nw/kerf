@@ -116,6 +116,27 @@ export interface OcrOptions {
   languages: string[]
   outputs: OcrOutput[]
   outputDir: string | null
+  skipTextPages: boolean
+}
+
+export type OcrBlock =
+  | { kind: 'heading'; level: 1 | 2 | 3; text: string }
+  | { kind: 'paragraph'; text: string }
+  | { kind: 'list'; ordered: boolean; items: string[] }
+
+export interface OcrPage {
+  number: number
+  blocks: OcrBlock[]
+  confidence: number | null
+  source: 'ocr' | 'textlayer'
+}
+
+export interface OcrResult {
+  languages: string[]
+  pages: OcrPage[]
+  confidence: number | null
+  words: number
+  weakPages: number[]
 }
 
 export interface MetaCleanOptions {

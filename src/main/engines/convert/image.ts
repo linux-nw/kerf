@@ -55,7 +55,7 @@ function open(input: Buffer, extension: string, animated: boolean) {
   return extension === 'svg' ? pipeline.resize({ width: 4096, height: 4096, fit: 'inside', withoutEnlargement: true }) : pipeline
 }
 
-async function imageToPdf(png: Buffer): Promise<Uint8Array> {
+export async function imageToPdf(png: Buffer): Promise<Uint8Array> {
   const meta = await sharp(png, { failOn: 'none' }).metadata()
   const width = meta.width ?? 0
   const height = meta.height ?? 0

@@ -119,3 +119,18 @@ export function accepts(accept: string[] | '*', path: string): boolean {
   if (accept === '*') return true
   return accept.includes(extensionOf(path))
 }
+
+export const OCR_LANGUAGES: Array<{ code: string; label: string }> = [
+  { code: 'deu', label: 'Deutsch' },
+  { code: 'eng', label: 'Englisch' },
+  { code: 'fra', label: 'Französisch' },
+  { code: 'spa', label: 'Spanisch' },
+  { code: 'ita', label: 'Italienisch' },
+  { code: 'nld', label: 'Niederländisch' },
+  { code: 'pol', label: 'Polnisch' },
+  { code: 'por', label: 'Portugiesisch' },
+  { code: 'tur', label: 'Türkisch' },
+  { code: 'ces', label: 'Tschechisch' },
+  { code: 'rus', label: 'Russisch' },
+  { code: 'ukr', label: 'Ukrainisch' }
+]
