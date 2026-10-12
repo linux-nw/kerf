@@ -62,6 +62,30 @@ Ziel: von der Datei bis zum Ergebnis in drei Klicks.
 | Fehler | Warndreieck, "Fehler" und Grund | Lösung als Button (Passwort, Reparatur) |
 | Abgebrochen | Kreuz, "Abgebrochen" | Wiederholen |
 
+## Startzustände
+
+Jede Seite hat einen eigenen Startzustand, solange noch keine Datei da ist. Er erklärt in einem Blick, was die Seite kann. Sobald Dateien da sind, wird daraus die Arbeitsansicht mit kompakter Dropzone, Liste und unterer Aktionsleiste. Im Startzustand gibt es keine Aktionsleiste. Der Rahmen ist 40 px Seitenabstand, Kopf 20 px, Inhalt 28 px.
+
+| Seite | Startzustand |
+| --- | --- |
+| Konvertieren | Zwei große Wähler "Von" (automatisch erkennen oder Format) und "In" (Format, gefiltert nach dem, was möglich ist), Dropzone, darunter beliebte Wege als Chips |
+| PDF-Werkzeuge | Schritte 1, 2, 3 und fünf Aufgaben-Kacheln mit Illustration. Nach der Wahl: Reiter für die Aufgabe, Dropzone und das Feld "So läuft es" |
+| Komprimieren | Breite Dropzone mit Formaten, vier Karten für die Stärke mit Balken, Zielgröße als Eingabe |
+| Texterkennung | Dropzone neben einer Vorher-Nachher-Zeichnung, Karten für Sprachen und Ergebnis, Zeile zur KI-Aufbereitung |
+| Metadaten lesen | Dropzone und vier Karten, was gefunden wird |
+| Metadaten entfernen | Dropzone neben dem Vorher-Nachher-Vergleich, drei Fakten |
+| Schwärzen | Dropzone neben einer Beispielseite mit Balken, drei Schritte |
+| Prüfsummen | Dropzone, Verfahren als Chips, Feld zum Vergleichen |
+| Archive | Zwei Zonen, Packen und Entpacken. Die Zone bestimmt den Modus |
+
+Die Dropzone hat keine Zusatzknöpfe. Ziehen, klicken oder Strg V reicht. Die Seitenleiste bleibt unverändert, ergänzt um "Einstellungen" über dem Erscheinungsbild. Der Umschalter für Dunkel, Hell und System füllt die ganze Breite.
+
+## Einstellungen
+
+Vier Blöcke in einer Spalte: Allgemein (Standard-Ausgabeordner, Verlauf an oder aus), Texterkennung (Standardsprachen und Standardausgabe), KI-Aufbereitung und Über Kerf.
+
+Die KI-Aufbereitung ist standardmäßig aus und wird ausdrücklich mit einem Schalter eingeschaltet. Anbieter ist Ollama oder ein beliebiger Server mit OpenAI-Schnittstelle (LM Studio, llama.cpp, vLLM). Erlaubt sind nur Adressen auf diesem Rechner oder im eigenen Netzwerk. Die Liste zeigt die Modelle, die der Server meldet, mit Größe. Bei Ollama lassen sich Gemma 4 E4B (empfohlen) und E2B (für schwächere Rechner) mit Fortschrittsanzeige laden, oder ein anderes Modell per Namen.
+
 ## Beispieltexte
 
 | Situation | Text |

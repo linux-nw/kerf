@@ -16,11 +16,13 @@ Kerf heißt die Schnittbreite einer Säge, also das Material, das beim Schneiden
 
 **PDF-Werkzeuge.** Zusammenführen, teilen, Seiten ordnen und drehen, Wasserzeichen, Seitenzahlen.
 
-**Texterkennung.** Offline mit Tesseract (LSTM), 12 Sprachen eingebaut (Deutsch, Englisch, Französisch, Spanisch, Italienisch, Niederländisch, Polnisch, Portugiesisch, Türkisch, Tschechisch, Russisch, Ukrainisch), auch gemischt. Die Bilder werden vorher aufbereitet, der erkannte Text wird bereinigt und gegliedert (Absätze, Überschriften, Listen, Silbentrennung). Ausgabe als durchsuchbares PDF, TXT, Markdown oder DOCX.
+**Texterkennung.** Offline mit Tesseract (LSTM), 12 Sprachen eingebaut (Deutsch, Englisch, Französisch, Spanisch, Italienisch, Niederländisch, Polnisch, Portugiesisch, Türkisch, Tschechisch, Russisch, Ukrainisch), auch gemischt. Die Bilder werden vorher aufbereitet, der erkannte Text wird bereinigt und gegliedert (Absätze, Überschriften, Listen, Silbentrennung). Ausgabe als durchsuchbares PDF, TXT, Markdown oder DOCX. Optional bessert ein lokales Sprachmodell Erkennungsfehler aus (siehe Einstellungen).
 
 **Privatsphäre.** Metadaten und EXIF lesen, Metadaten entfernen, PDFs wirklich schwärzen (die betroffenen Seiten werden zu Bildern gerechnet und geprüft).
 
 **Weiteres.** Prüfsummen (MD5, SHA-1, SHA-256, SHA-512, mit Vergleich) und Archive (ZIP, 7z, tar.gz, mit Passwort, Entpacken).
+
+**Einstellungen.** Standard-Ausgabeordner, Verlauf an oder aus, Standardsprachen und Standardausgabe der Texterkennung. Dazu die KI-Aufbereitung: Sie ist aus, bis du sie einschaltest. Standardmäßig spricht Kerf mit Ollama auf diesem Rechner (`http://127.0.0.1:11434`), jeder Server mit OpenAI-Schnittstelle geht auch, zum Beispiel LM Studio. Kerf zeigt die vorhandenen Modelle und lädt auf Wunsch Gemma 4 E4B (empfohlen, etwa 9,6 GB) oder E2B (etwa 7,2 GB, für schwächere Rechner). Es sind nur Adressen auf diesem Rechner oder im eigenen Netzwerk erlaubt. Das Modell darf nur kleine Korrekturen machen: Antworten, die zu weit vom erkannten Text abweichen oder Zahlen verändern, verwirft Kerf und behält den Originaltext.
 
 **Verlauf.** Jedes Ergebnis steht im Verlauf. Löschen entfernt dort nur den Eintrag, die Datei bleibt auf der Festplatte.
 
@@ -30,7 +32,7 @@ Der ursprüngliche Plan mit Stufen steht in [`design-system/modules.md`](design-
 
 ## Prinzipien
 
-1. Alles bleibt lokal. Die App blockiert Netzwerkzugriffe und zeigt das auf jedem Screen an.
+1. Alles bleibt lokal. Die App blockiert Netzwerkzugriffe und zeigt das auf jedem Screen an. Die einzige Ausnahme ist die ausdrücklich eingeschaltete KI-Aufbereitung, und sie darf nur mit Adressen auf diesem Rechner oder im eigenen Netzwerk sprechen.
 2. Originale werden nie überschrieben.
 3. Die Verarbeitung läuft in der App selbst oder über bewährte Programme (LibreOffice, FFmpeg, Pandoc, Tesseract), die mit der App ausgeliefert werden. Die Engines sind JavaScript-Bibliotheken (pdf-lib, pdf.js, sharp, tesseract.js) plus mitgelieferte Programme (7-Zip, FFmpeg). LibreOffice und Microsoft Office werden nur genutzt, wenn sie installiert sind.
 4. Einfach bedienbar: Dateien ablegen, Preset wählen, starten.
@@ -66,7 +68,10 @@ Einen Installer baut GitHub: unter Actions den Workflow "Windows-Build" starten,
 npm run dev
 npm test
 npm run typecheck
+npm run icons
 ```
+
+`npm run icons` erzeugt aus `build/icon.svg` das Programm-Symbol (`icon.ico` mit sieben Größen, `icon.png`).
 
 Windows 11 ist die Zielplattform. Der Installer wird über GitHub Actions gebaut.
 
