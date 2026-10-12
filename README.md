@@ -37,16 +37,30 @@ Die vollständige Liste mit Stufen (MVP, V1, später) steht in [`design-system/m
 
 Offen ist die Lizenz. Sobald Ghostscript, FFmpeg oder Pandoc ausgeliefert werden, beeinflusst das (A)GPL, wie Kerf verteilt werden darf.
 
+## Ausprobieren
+
+Voraussetzung ist Node.js 24 oder neuer.
+
+```
+git clone https://github.com/linux-nw/kerf.git
+cd kerf
+npm install
+npm start
+```
+
+`npm start` baut die App und öffnet sie. Wenn Windows beim Start von Electron nach einer Firewall-Freigabe fragt, ist Ablehnen in Ordnung, Kerf braucht kein Netzwerk.
+
+Einen Installer baut GitHub: unter Actions den Workflow "Windows-Build" starten, danach unter Artifacts die Datei `Kerf-Windows` laden. Der Installer ist nicht signiert, Windows zeigt deshalb eine SmartScreen-Warnung.
+
 ## Entwickeln
 
 ```
-npm install
 npm run dev
 npm test
-npm run build
+npm run typecheck
 ```
 
-Windows 11 ist die Zielplattform. Ein Installer ist noch nicht eingerichtet.
+Windows 11 ist die Zielplattform. Der Installer wird über GitHub Actions gebaut.
 
 ## Repo-Struktur
 
