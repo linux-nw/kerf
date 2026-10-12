@@ -6,6 +6,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "tokens": "node scripts/build-tokens.mjs",
+    "icons": "node scripts/build-icons.mjs",
     "dev": "npm run tokens && npm run tessdata && electron-vite dev",
     "build": "npm run tokens && npm run tessdata && electron-vite build",
     "start": "npm run build && electron .",

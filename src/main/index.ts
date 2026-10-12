@@ -77,6 +77,7 @@ function createWindow(): BrowserWindow {
     show: false,
     backgroundColor: '#0e1113',
     title: 'Kerf',
+    icon: join(app.getAppPath(), 'build', 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -121,7 +122,7 @@ function withSettings(tool: ToolId, options: unknown): unknown {
   if (!next['outputDir'] && current.outputDir) next['outputDir'] = current.outputDir
   if (tool === 'ocr') {
     const { provider, baseUrl, apiKey, model } = current.ai
-    next['ai'] = next['useAi'] === true && model !== '' ? { provider, baseUrl, apiKey, model } : null
+    next['ai'] = next['useAi'] === true && current.ai.enabled && model !== '' ? { provider, baseUrl, apiKey, model } : null
   }
   return next
 }

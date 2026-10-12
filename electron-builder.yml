@@ -6,10 +6,12 @@ directories:
 files:
   - out/**
   - resources/tessdata/**
+  - build/icon.png
   - package.json
 asar: false
 npmRebuild: false
 win:
+  icon: build/icon.ico
   target:
     - nsis
     - zip
@@ -19,4 +21,5 @@ nsis:
   allowToChangeInstallationDirectory: true
   perMachine: false
 linux:
+  icon: build/icon.png
   target: dir
