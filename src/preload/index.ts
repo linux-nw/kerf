@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AddResult, JobUpdate, KerfApi } from '@shared/types'
+import type { AddResult, AiPullUpdate, JobUpdate, KerfApi } from '@shared/types'
 
 function listen<T>(channel: string, listener: (payload: T) => void): () => void {
   const handler = (_event: Electron.IpcRendererEvent, payload: T) => listener(payload)
@@ -39,9 +39,16 @@ const api: KerfApi = {
   pdfFind: (path, terms, patterns) => ipcRenderer.invoke('pdf:find', path, terms, patterns),
   readMetadata: (path) => ipcRenderer.invoke('meta:read', path),
   saveText: (defaultName, content) => ipcRenderer.invoke('text:save', defaultName, content),
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
+  aiStatus: (request) => ipcRenderer.invoke('ai:status', request),
+  aiPull: (baseUrl, model) => ipcRenderer.invoke('ai:pull', baseUrl, model),
+  aiPullCancel: () => ipcRenderer.invoke('ai:pullCancel'),
+  getAppInfo: () => ipcRenderer.invoke('app:info'),
   onJobUpdate: (listener) => listen<JobUpdate>('jobs:update', listener),
   onFilesOpened: (listener) => listen<AddResult>('files:opened', listener),
-  onHistoryChanged: (listener) => listen<undefined>('history:changed', () => listener())
+  onHistoryChanged: (listener) => listen<undefined>('history:changed', () => listener()),
+  onAiPull: (listener) => listen<AiPullUpdate>('ai:pull', listener)
 }
 
 contextBridge.exposeInMainWorld('kerf', api)

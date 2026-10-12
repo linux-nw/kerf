@@ -1,9 +1,10 @@
 import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { BrowserWindow, app, dialog, ipcMain, session, shell } from 'electron'
+import { BrowserWindow, app, dialog, ipcMain, safeStorage, session, shell } from 'electron'
 import { TOOLS, type ToolId } from '@shared/tools'
-import type { AddResult, BlobInput, Capabilities, MetaReport, NetworkStatus, PdfInfo, StartJob, TextMatch } from '@shared/types'
+import type { AddResult, AiPullUpdate, AiStatus, AppInfo, BlobInput, Capabilities, MetaReport, NetworkStatus, PdfInfo, Settings, SettingsPatch, StartJob, TextMatch } from '@shared/types'
+import { aiStatus, pullModel, type AiConnection } from './ai/client'
 import { readClipboard } from './clipboard'
 import { setHtmlToPdf } from './engines/convert/htmlPdf'
 import { detectCapabilities } from './engines/capabilities'
@@ -19,6 +20,7 @@ import { htmlToPdfWindow } from './htmlWindow'
 import { JobRunner } from './jobs'
 import { isLocalUrl } from './network'
 import { PdfCache } from './pdfCache'
+import { SettingsStore } from './settings'
 import { createCompressTool } from './tools/compress'
 import { createConvertTool } from './tools/convert'
 import { archiveTool } from './tools/archive'
@@ -33,6 +35,8 @@ const allowed = new Set<string>()
 let blockedRequests = 0
 let mainWindow: BrowserWindow | null = null
 let history: HistoryStore
+let settings: SettingsStore
+let pullController: AbortController | null = null
 let runner: JobRunner
 let capabilities: Promise<Capabilities> | null = null
 const pdfCache = new PdfCache()
@@ -111,6 +115,25 @@ function withPastedOutput(job: StartJob, options: unknown): unknown {
   return { ...base, outputDir: app.getPath('downloads') }
 }
 
+function withSettings(tool: ToolId, options: unknown): unknown {
+  const current = settings.current()
+  const next: Record<string, unknown> = typeof options === 'object' && options !== null ? { ...(options as Record<string, unknown>) } : {}
+  if (!next['outputDir'] && current.outputDir) next['outputDir'] = current.outputDir
+  if (tool === 'ocr') {
+    const { provider, baseUrl, apiKey, model } = current.ai
+    next['ai'] = next['useAi'] === true && model !== '' ? { provider, baseUrl, apiKey, model } : null
+  }
+  return next
+}
+
+function parseConnection(value: unknown): AiConnection | null {
+  if (typeof value !== 'object' || value === null) return null
+  const input = value as Record<string, unknown>
+  const provider = input['provider'] === 'openai' ? 'openai' : input['provider'] === 'ollama' ? 'ollama' : null
+  if (!provider || typeof input['baseUrl'] !== 'string') return null
+  return { provider, baseUrl: input['baseUrl'], apiKey: typeof input['apiKey'] === 'string' ? input['apiKey'] : '' }
+}
+
 function registerIpc(): void {
   const send = (channel: string, payload?: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload)
@@ -161,7 +184,7 @@ function registerIpc(): void {
     if (!isToolId(tool) || !Array.isArray(jobs)) return
     const valid = (jobs as StartJob[]).filter((job) => job && typeof job.id === 'string' && Array.isArray(job.paths) && job.paths.length > 0 && job.paths.every((path) => allowed.has(path)))
     const first = valid[0]
-    const effective = first ? withPastedOutput(first, options) : options
+    const effective = withSettings(tool, first ? withPastedOutput(first, options) : options)
     await runner.start(tool, valid, effective, (update) => {
       send('jobs:update', update)
       if (update.status === 'done') send('history:changed')
@@ -209,6 +232,30 @@ function registerIpc(): void {
 
   ipcMain.handle('meta:read', async (_event, path: unknown): Promise<MetaReport> => readMetadata(requireAllowed(path)))
 
+  ipcMain.handle('settings:get', (): Promise<Settings> => settings.load())
+  ipcMain.handle('settings:save', async (_event, patch: unknown): Promise<Settings> => {
+    const saved = await settings.update((typeof patch === 'object' && patch !== null ? patch : {}) as SettingsPatch)
+    history.enabled = saved.historyEnabled
+    return saved
+  })
+  ipcMain.handle('ai:status', async (_event, request: unknown): Promise<AiStatus> => {
+    const connection = parseConnection(request)
+    if (!connection) return { reachable: false, hostAllowed: true, version: null, error: 'Ungültige Angaben', models: [] }
+    return aiStatus(connection)
+  })
+  ipcMain.handle('ai:pull', (_event, baseUrl: unknown, model: unknown) => {
+    if (typeof baseUrl !== 'string' || typeof model !== 'string' || !/^[\w.\-:/]{1,120}$/.test(model)) return
+    pullController?.abort()
+    const controller = new AbortController()
+    pullController = controller
+    const connection: AiConnection = { provider: 'ollama', baseUrl, apiKey: settings.current().ai.apiKey }
+    void pullModel(connection, model, (update: AiPullUpdate) => send('ai:pull', update), controller.signal).finally(() => {
+      if (pullController === controller) pullController = null
+    })
+  })
+  ipcMain.handle('ai:pullCancel', () => pullController?.abort())
+  ipcMain.handle('app:info', (): AppInfo => ({ version: app.getVersion(), dataPath: app.getPath('userData'), platform: process.platform }))
+
   ipcMain.handle('text:save', async (_event, defaultName: unknown, content: unknown): Promise<string | null> => {
     if (!mainWindow || typeof defaultName !== 'string' || typeof content !== 'string') return null
     const result = await dialog.showSaveDialog(mainWindow, { title: 'Speichern unter', defaultPath: defaultName })
@@ -236,8 +283,15 @@ if (!lock) {
     void openStartup(argv)
   })
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
     history = new HistoryStore(join(app.getPath('userData'), 'verlauf.json'))
+    settings = new SettingsStore(
+      join(app.getPath('userData'), 'einstellungen.json'),
+      safeStorage.isEncryptionAvailable()
+        ? { encrypt: (text) => safeStorage.encryptString(text).toString('base64'), decrypt: (text) => safeStorage.decryptString(Buffer.from(text, 'base64')) }
+        : null
+    )
+    history.enabled = (await settings.load()).historyEnabled
     setPdfOpener(openPdfInWorker)
     setHtmlToPdf(htmlToPdfWindow)
     runner = new JobRunner(
@@ -258,6 +312,7 @@ if (!lock) {
     registerIpc()
     mainWindow = createWindow()
     mainWindow.on('closed', () => {
+      pullController?.abort()
       runner.cancelAll()
       void pdfCache.closeAll()
       mainWindow = null

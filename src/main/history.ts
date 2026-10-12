@@ -8,6 +8,7 @@ export type StoredEntry = Omit<HistoryEntry, 'exists'>
 const MAX_ENTRIES = 500
 
 export class HistoryStore {
+  enabled = true
   private entries: StoredEntry[] = []
   private loaded = false
   private queue: Promise<void> = Promise.resolve()
@@ -45,6 +46,7 @@ export class HistoryStore {
   }
 
   async add(entry: StoredEntry): Promise<void> {
+    if (!this.enabled) return
     await this.load()
     this.entries = [entry, ...this.entries.filter((item) => item.id !== entry.id)].slice(0, MAX_ENTRIES)
     await this.persist()
