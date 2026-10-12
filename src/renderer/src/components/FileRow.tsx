@@ -1,64 +1,94 @@
-import { AlertTriangle, CheckCircle2, Clock, FolderOpen, Loader2, MinusCircle, X, XCircle } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { AlertTriangle, CheckCircle2, Clock, FolderOpen, Loader2, Trash2, X, XCircle } from 'lucide-react'
 import { formatBytes } from '@shared/format'
-import type { JobErrorCode } from '@shared/types'
-import type { Entry } from '../state'
+import type { JobErrorCode, JobUpdate } from '@shared/types'
+import { useApp } from '../context'
+import type { Entry } from '../store'
 import { SizeDelta } from './SizeDelta'
+import { baseName, ExtBadge, IconButton } from './ui'
 
 interface Props {
+  tool: Parameters<ReturnType<typeof useApp>['run']>[0]
   entry: Entry
+  delta?: boolean
+  keepsHistory?: boolean
   onRemove: () => void
-  onCancel: () => void
-  onShow: (path: string) => void
+  extra?: ReactNode
+  note?: ReactNode
+  doneLabel?: string
+  selected?: boolean
+  onSelect?: () => void
 }
 
 const errorTexts: Record<JobErrorCode, string> = {
-  password: 'Braucht ein Passwort. Geschützte PDFs kann Kerf noch nicht öffnen.',
-  unreadable: 'Die Datei ist beschädigt oder kein gültiges PDF.',
+  password: 'Braucht ein Passwort. Geschützte Dateien kann Kerf hier nicht öffnen.',
+  unreadable: 'Die Datei ist beschädigt oder hat ein unerwartetes Format.',
   missing: 'Die Datei wurde nicht mehr gefunden.',
   write: 'Das Ergebnis konnte nicht gespeichert werden.',
+  unsupported: 'Das geht mit dieser Datei nicht.',
+  toolmissing: 'Dafür fehlt ein Programm auf diesem Rechner.',
   unknown: 'Unerwarteter Fehler.'
 }
 
-function ext(name: string): string {
-  const index = name.lastIndexOf('.')
-  return index > 0 ? name.slice(index + 1, index + 5).toUpperCase() : 'DATEI'
+function errorText(update: JobUpdate): string {
+  const code = update.errorCode ?? 'unknown'
+  const base = errorTexts[code]
+  if ((code === 'unsupported' || code === 'toolmissing' || code === 'unknown') && update.detail) return update.detail
+  return base
 }
 
-function outputName(path: string): string {
-  return path.split(/[\\/]/).pop() ?? path
-}
-
-export function FileRow({ entry, onRemove, onCancel, onShow }: Props) {
+export function FileRow({ tool, entry, delta = false, keepsHistory = true, onRemove, extra, note, doneLabel = 'Fertig', selected, onSelect }: Props) {
+  const app = useApp()
   const { info, update } = entry
   const status = update?.status ?? null
-  const cls = status === 'running' ? ' is-running' : status === 'error' ? ' is-error' : ''
+  const cls = `${status === 'running' ? ' is-running' : ''}${status === 'error' ? ' is-error' : ''}${selected ? ' is-selected' : ''}${onSelect ? ' is-clickable' : ''}`
+  const out = update?.outputPath ?? null
 
-  let state
-  let action
-  if (status === 'waiting') {
+  let state: ReactNode = null
+  let actions: ReactNode
+  if (status === 'waiting' || status === 'running') {
     state = (
-      <span className="kf-status kf-status--wait">
-        <Clock className="kf-icon kf-icon--sm" aria-hidden="true" />
-        Wartet
+      <span className={`kf-status ${status === 'running' ? 'kf-status--run' : 'kf-status--wait'}`}>
+        {status === 'running' ? <Loader2 className="kf-icon kf-icon--sm kf-spin" aria-hidden="true" /> : <Clock className="kf-icon kf-icon--sm" aria-hidden="true" />}
+        {status === 'running' ? 'Läuft' : 'Wartet'}
       </span>
     )
-    action = <IconButton label="Abbrechen" onClick={onCancel} icon={<X className="kf-icon kf-icon--sm" />} />
-  } else if (status === 'running') {
-    state = (
-      <span className="kf-status kf-status--run">
-        <Loader2 className="kf-icon kf-icon--sm" aria-hidden="true" />
-        Läuft
-      </span>
+    actions = (
+      <IconButton label="Abbrechen" onClick={() => app.cancel(info.id)}>
+        <X className="kf-icon kf-icon--sm" />
+      </IconButton>
     )
-    action = <IconButton label="Abbrechen" onClick={onCancel} icon={<X className="kf-icon kf-icon--sm" />} />
-  } else if (status === 'done' && update?.outputSize != null) {
-    state = <SizeDelta before={info.size} after={update.outputSize} />
-    action = update.outputPath ? (
-      <IconButton label="Im Ordner zeigen" onClick={() => onShow(update.outputPath as string)} icon={<FolderOpen className="kf-icon kf-icon--sm" />} />
-    ) : null
+  } else if (status === 'done') {
+    state = delta && update?.outputSize != null ? <SizeDelta before={info.size} after={update.outputSize} /> : <span className="kf-status kf-status--ok"><CheckCircle2 className="kf-icon kf-icon--sm" aria-hidden="true" />{doneLabel}</span>
+    actions = (
+      <>
+        {out ? (
+          <IconButton label="Im Ordner zeigen" onClick={() => void window.kerf.showInFolder(out)}>
+            <FolderOpen className="kf-icon kf-icon--sm" />
+          </IconButton>
+        ) : null}
+        {keepsHistory && out ? (
+          <IconButton
+            label="Aus dem Verlauf entfernen"
+            danger
+            onClick={() => app.askForget({ id: info.id, name: info.name, fileName: baseName(out), onDone: onRemove })}
+          >
+            <Trash2 className="kf-icon kf-icon--sm" />
+          </IconButton>
+        ) : (
+          <IconButton label="Aus der Liste entfernen" onClick={onRemove}>
+            <X className="kf-icon kf-icon--sm" />
+          </IconButton>
+        )}
+      </>
+    )
   } else if (status === 'nogain' || status === 'larger') {
-    state = <SizeDelta before={info.size} after={update?.outputSize ?? info.size} />
-    action = null
+    state = delta ? <SizeDelta before={info.size} after={update?.outputSize ?? info.size} /> : <span className="kf-status kf-status--wait">Nichts geändert</span>
+    actions = (
+      <IconButton label="Aus der Liste entfernen" onClick={onRemove}>
+        <X className="kf-icon kf-icon--sm" />
+      </IconButton>
+    )
   } else if (status === 'error') {
     state = (
       <span className="kf-status kf-status--err">
@@ -66,7 +96,11 @@ export function FileRow({ entry, onRemove, onCancel, onShow }: Props) {
         Fehler
       </span>
     )
-    action = <IconButton label="Entfernen" onClick={onRemove} icon={<X className="kf-icon kf-icon--sm" />} />
+    actions = (
+      <IconButton label="Entfernen" onClick={onRemove}>
+        <X className="kf-icon kf-icon--sm" />
+      </IconButton>
+    )
   } else if (status === 'cancelled') {
     state = (
       <span className="kf-status kf-status--wait">
@@ -74,34 +108,43 @@ export function FileRow({ entry, onRemove, onCancel, onShow }: Props) {
         Abgebrochen
       </span>
     )
-    action = <IconButton label="Entfernen" onClick={onRemove} icon={<X className="kf-icon kf-icon--sm" />} />
+    actions = (
+      <IconButton label="Entfernen" onClick={onRemove}>
+        <X className="kf-icon kf-icon--sm" />
+      </IconButton>
+    )
   } else {
-    state = null
-    action = <IconButton label="Entfernen" onClick={onRemove} icon={<X className="kf-icon kf-icon--sm" />} />
+    actions = (
+      <IconButton label="Entfernen" onClick={onRemove}>
+        <X className="kf-icon kf-icon--sm" />
+      </IconButton>
+    )
   }
 
-  let note: string | null = null
-  if (status === 'done' && update?.outputPath) {
-    note = `${outputName(update.outputPath)}${update.detail ? `. ${update.detail}.` : ''}`
-  } else if (status === 'nogain') note = 'Schon optimal. Es wurde nichts gespeichert.'
-  else if (status === 'larger') note = 'Das Ergebnis wäre größer geworden. Das Original bleibt, es wurde nichts gespeichert.'
-  else if (status === 'error' && update?.errorCode) note = errorTexts[update.errorCode]
+  let text: ReactNode = note ?? null
+  if (!text && status === 'error' && update) text = errorText(update)
+  else if (!text && status === 'nogain') text = update?.detail ?? 'Schon optimal. Es wurde nichts gespeichert.'
+  else if (!text && status === 'larger') text = 'Das Ergebnis wäre größer geworden. Es wurde nichts gespeichert.'
+  else if (!text && status === 'done' && update?.detail) text = update.detail
+  else if (!text && status === 'running' && update?.step) text = update.step
 
+  const sub = !delta && status === 'done' && out ? `→ ${baseName(out)}` : formatBytes(info.size)
   const percent = update?.percent ?? 0
 
   return (
-    <div className={`kf-file${cls}`}>
-      <span className="kf-file__ext" aria-hidden="true">
-        {ext(info.name)}
-      </span>
+    <div className={`kf-file${cls}`} onClick={onSelect} role={onSelect ? 'button' : undefined} tabIndex={onSelect ? 0 : undefined} onKeyDown={onSelect ? (event) => event.key === 'Enter' && onSelect() : undefined}>
+      <ExtBadge name={info.name} />
       <div className="kf-file__main">
         <span className="kf-file__name" title={info.path}>
           {info.name}
         </span>
-        <span className="kf-file__meta">{formatBytes(info.size)}</span>
+        <span className="kf-file__meta">{sub}</span>
       </div>
       {state}
-      <div className="kf-file__actions">{action}</div>
+      <div className="kf-file__actions" onClick={(event) => event.stopPropagation()}>
+        {extra}
+        {actions}
+      </div>
       {status === 'running' ? (
         <div className="kf-file__progress">
           <div className="kf-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} aria-label={`${info.name}: ${update?.step ?? ''}`}>
@@ -110,22 +153,7 @@ export function FileRow({ entry, onRemove, onCancel, onShow }: Props) {
           <span className="kf-progress__pct">{percent} %</span>
         </div>
       ) : null}
-      {status === 'running' && update?.step ? <p className="kf-file__note">{update.step}</p> : null}
-      {note ? (
-        <p className="kf-file__note">
-          {status === 'done' ? <CheckCircle2 className="kf-icon kf-icon--sm" style={{ verticalAlign: 'text-bottom', marginRight: 6, color: 'var(--success)' }} aria-hidden="true" /> : null}
-          {status === 'nogain' ? <MinusCircle className="kf-icon kf-icon--sm" style={{ verticalAlign: 'text-bottom', marginRight: 6 }} aria-hidden="true" /> : null}
-          {note}
-        </p>
-      ) : null}
+      {text ? <p className="kf-file__note">{text}</p> : null}
     </div>
-  )
-}
-
-function IconButton({ label, onClick, icon }: { label: string; onClick: () => void; icon: React.ReactNode }) {
-  return (
-    <button type="button" className="kf-btn kf-btn--ghost kf-btn--icon kf-btn--sm" aria-label={label} title={label} onClick={onClick}>
-      {icon}
-    </button>
   )
 }

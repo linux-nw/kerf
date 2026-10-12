@@ -1,27 +1,47 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { AddResult, JobUpdate, KerfApi } from '@shared/types'
 
+function listen<T>(channel: string, listener: (payload: T) => void): () => void {
+  const handler = (_event: Electron.IpcRendererEvent, payload: T) => listener(payload)
+  ipcRenderer.on(channel, handler)
+  return () => ipcRenderer.removeListener(channel, handler)
+}
+
 const api: KerfApi = {
-  pickFiles: () => ipcRenderer.invoke('files:pick'),
-  addPaths: (paths) => ipcRenderer.invoke('files:add', paths),
-  pathsForFiles: (files) => files.map((file) => webUtils.getPathForFile(file)).filter((path) => path !== ''),
+  pickFiles: (tool) => ipcRenderer.invoke('files:pick', tool),
+  pickFolder: (tool) => ipcRenderer.invoke('files:pickFolder', tool),
+  addPaths: (tool, paths) => ipcRenderer.invoke('files:add', tool, paths),
+  addBlobs: (tool, blobs) => ipcRenderer.invoke('files:addBlobs', tool, blobs),
+  readClipboardFiles: (tool) => ipcRenderer.invoke('files:clipboard', tool),
+  pathsForFiles: (files) =>
+    files
+      .map((file) => {
+        try {
+          return webUtils.getPathForFile(file)
+        } catch {
+          return ''
+        }
+      })
+      .filter((path) => path !== ''),
   pickOutputDir: () => ipcRenderer.invoke('output:pick'),
-  startJobs: (jobs, options) => ipcRenderer.invoke('jobs:start', jobs, options),
+  startJobs: (tool, jobs, options) => ipcRenderer.invoke('jobs:start', tool, jobs, options),
   cancelJob: (id) => ipcRenderer.invoke('jobs:cancel', id),
   cancelAll: () => ipcRenderer.invoke('jobs:cancelAll'),
   showInFolder: (path) => ipcRenderer.invoke('shell:show', path),
-  openFolder: (path) => ipcRenderer.invoke('shell:open', path),
+  openPath: (path) => ipcRenderer.invoke('shell:open', path),
   getNetworkStatus: () => ipcRenderer.invoke('network:status'),
-  onJobUpdate: (listener) => {
-    const handler = (_event: Electron.IpcRendererEvent, update: JobUpdate) => listener(update)
-    ipcRenderer.on('jobs:update', handler)
-    return () => ipcRenderer.removeListener('jobs:update', handler)
-  },
-  onFilesOpened: (listener) => {
-    const handler = (_event: Electron.IpcRendererEvent, result: AddResult) => listener(result)
-    ipcRenderer.on('files:opened', handler)
-    return () => ipcRenderer.removeListener('files:opened', handler)
-  }
+  getCapabilities: () => ipcRenderer.invoke('capabilities'),
+  listHistory: () => ipcRenderer.invoke('history:list'),
+  removeHistory: (ids) => ipcRenderer.invoke('history:remove', ids),
+  clearHistory: () => ipcRenderer.invoke('history:clear'),
+  pdfInfo: (path) => ipcRenderer.invoke('pdf:info', path),
+  pdfPage: (path, page, width) => ipcRenderer.invoke('pdf:page', path, page, width),
+  pdfFind: (path, terms, patterns) => ipcRenderer.invoke('pdf:find', path, terms, patterns),
+  readMetadata: (path) => ipcRenderer.invoke('meta:read', path),
+  saveText: (defaultName, content) => ipcRenderer.invoke('text:save', defaultName, content),
+  onJobUpdate: (listener) => listen<JobUpdate>('jobs:update', listener),
+  onFilesOpened: (listener) => listen<AddResult>('files:opened', listener),
+  onHistoryChanged: (listener) => listen<undefined>('history:changed', () => listener())
 }
 
 contextBridge.exposeInMainWorld('kerf', api)

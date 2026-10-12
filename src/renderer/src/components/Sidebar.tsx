@@ -1,52 +1,42 @@
-import { Combine, FileArchive, FileDown, FileImage, FileScan, FileText, Fingerprint, ScanText, ShieldCheck, Shrink, type LucideIcon } from 'lucide-react'
+import { Archive, Combine, EyeOff, FileScan, FileSearch, Fingerprint, History, Monitor, Moon, RefreshCw, ScanText, Shrink, Sun, type LucideIcon } from 'lucide-react'
+import { TOOLS, type NavId, type ToolId } from '@shared/tools'
+import type { ThemeChoice } from '../theme'
 import { LocalBadge } from './LocalBadge'
 
-interface Module {
-  id: string
-  label: string
-  icon: LucideIcon
-  ready: boolean
+const ICONS: Record<ToolId, LucideIcon> = {
+  compress: Shrink,
+  convert: RefreshCw,
+  pdf: Combine,
+  ocr: ScanText,
+  metaread: FileSearch,
+  metaclean: FileScan,
+  redact: EyeOff,
+  hash: Fingerprint,
+  archive: Archive
 }
 
-const tools: Module[] = [
-  { id: 'compress', label: 'Komprimieren', icon: Shrink, ready: true },
-  { id: 'convert', label: 'Konvertieren', icon: FileImage, ready: false },
-  { id: 'office', label: 'Office zu PDF', icon: FileText, ready: false },
-  { id: 'pdf', label: 'PDF-Werkzeuge', icon: Combine, ready: false },
-  { id: 'ocr', label: 'Texterkennung', icon: ScanText, ready: false }
+const GROUPS: Array<{ id: 'tools' | 'privacy' | 'more'; label: string }> = [
+  { id: 'tools', label: 'Werkzeuge' },
+  { id: 'privacy', label: 'Privatsphäre' },
+  { id: 'more', label: 'Weiteres' }
 ]
 
-const privacy: Module[] = [
-  { id: 'scrub', label: 'Metadaten', icon: FileScan, ready: false },
-  { id: 'redact', label: 'Schwärzen', icon: ShieldCheck, ready: false },
-  { id: 'hash', label: 'Prüfsummen', icon: Fingerprint, ready: false },
-  { id: 'archive', label: 'Archive', icon: FileArchive, ready: false },
-  { id: 'export', label: 'Exportieren', icon: FileDown, ready: false }
+const THEMES: Array<{ id: ThemeChoice; label: string; icon: LucideIcon }> = [
+  { id: 'dark', label: 'Dunkel', icon: Moon },
+  { id: 'light', label: 'Hell', icon: Sun },
+  { id: 'system', label: 'System', icon: Monitor }
 ]
 
-function Group({ label, items, active }: { label: string; items: Module[]; active: string }) {
-  return (
-    <nav className="kf-nav" aria-label={label}>
-      <span className="kf-overline kf-nav__label">{label}</span>
-      {items.map(({ id, label: text, icon: Icon, ready }) => (
-        <button
-          key={id}
-          type="button"
-          className={`kf-nav__item${id === active ? ' is-active' : ''}`}
-          aria-current={id === active ? 'page' : undefined}
-          disabled={!ready}
-          title={ready ? undefined : 'Kommt bald'}
-        >
-          <Icon className="kf-icon" aria-hidden="true" />
-          {text}
-          {ready ? null : <span className="kf-nav__count">bald</span>}
-        </button>
-      ))}
-    </nav>
-  )
+interface Props {
+  active: NavId
+  busy: Partial<Record<ToolId, number>>
+  historyCount: number
+  theme: ThemeChoice
+  onNavigate: (id: NavId) => void
+  onTheme: (theme: ThemeChoice) => void
 }
 
-export function Sidebar({ active, queueCount }: { active: string; queueCount: number }) {
+export function Sidebar({ active, busy, historyCount, theme, onNavigate, onTheme }: Props) {
   return (
     <aside className="kf-side" aria-label="Hauptnavigation">
       <div className="kf-side__brand">
@@ -57,11 +47,39 @@ export function Sidebar({ active, queueCount }: { active: string; queueCount: nu
         Kerf
       </div>
       <div className="kf-side__scroll">
-        <Group label="Werkzeuge" items={tools} active={active} />
-        <Group label="Privatsphäre" items={privacy} active={active} />
+        {GROUPS.map((group) => (
+          <nav key={group.id} className="kf-nav" aria-label={group.label}>
+            <span className="kf-overline kf-nav__label">{group.label}</span>
+            {TOOLS.filter((tool) => tool.group === group.id).map((tool) => {
+              const Icon = ICONS[tool.id]
+              const count = busy[tool.id] ?? 0
+              return (
+                <button key={tool.id} type="button" className={`kf-nav__item${active === tool.id ? ' is-active' : ''}`} aria-current={active === tool.id ? 'page' : undefined} onClick={() => onNavigate(tool.id)}>
+                  <Icon className="kf-icon" aria-hidden="true" />
+                  {tool.label}
+                  {count > 0 ? <span className="kf-nav__count">{count}</span> : null}
+                </button>
+              )
+            })}
+          </nav>
+        ))}
+        <nav className="kf-nav" aria-label="Verlauf">
+          <span className="kf-overline kf-nav__label">Zuletzt</span>
+          <button type="button" className={`kf-nav__item${active === 'history' ? ' is-active' : ''}`} aria-current={active === 'history' ? 'page' : undefined} onClick={() => onNavigate('history')}>
+            <History className="kf-icon" aria-hidden="true" />
+            Verlauf
+            {historyCount > 0 ? <span className="kf-nav__count">{historyCount}</span> : null}
+          </button>
+        </nav>
       </div>
       <div className="kf-side__foot">
-        {queueCount > 0 ? <span className="kf-caption">{queueCount} in der Warteschlange</span> : null}
+        <div className="kf-seg kf-seg--icons" role="radiogroup" aria-label="Erscheinungsbild">
+          {THEMES.map(({ id, label, icon: Icon }) => (
+            <button key={id} type="button" role="radio" aria-checked={theme === id} title={label} aria-label={label} className={`kf-seg__item${theme === id ? ' is-active' : ''}`} onClick={() => onTheme(id)}>
+              <Icon className="kf-icon kf-icon--sm" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
         <LocalBadge />
       </div>
     </aside>
