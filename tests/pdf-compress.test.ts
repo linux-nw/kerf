@@ -45,7 +45,7 @@ describe('PNG-Prädiktor', () => {
 
 describe('compressPdfBytes', () => {
   it('verkleinert ein bildlastiges PDF deutlich und lässt es gültig', async () => {
-    const { bytes, stats } = await compressPdfBytes(sample, { dpi: 150, quality: 70, stripMetadata: false })
+    const { bytes, stats } = await compressPdfBytes(sample, { level: 'kompakt', stripMetadata: false })
     expect(bytes.length).toBeLessThan(sample.length * 0.5)
     expect(stats.images).toBe(3)
     expect(stats.recompressed).toBeGreaterThanOrEqual(2)
@@ -54,15 +54,15 @@ describe('compressPdfBytes', () => {
     expect(reloaded.getPageCount()).toBe(2)
   })
 
-  it('spart mit dem E-Mail-Preset mehr als mit dem Druck-Preset', async () => {
-    const mail = await compressPdfBytes(sample, { dpi: 96, quality: 55, stripMetadata: false })
-    const print = await compressPdfBytes(sample, { dpi: 300, quality: 85, stripMetadata: false })
-    expect(mail.bytes.length).toBeLessThan(print.bytes.length)
+  it('wird mit Winzig nie größer als mit Kompakt', async () => {
+    const kompakt = await compressPdfBytes(sample, { level: 'kompakt', stripMetadata: false })
+    const winzig = await compressPdfBytes(sample, { level: 'winzig', stripMetadata: false })
+    expect(winzig.bytes.length).toBeLessThanOrEqual(kompakt.bytes.length)
   })
 
   it('entfernt Metadaten auf Wunsch', async () => {
-    const kept = await compressPdfBytes(sample, { dpi: 150, quality: 70, stripMetadata: false })
-    const stripped = await compressPdfBytes(sample, { dpi: 150, quality: 70, stripMetadata: true })
+    const kept = await compressPdfBytes(sample, { level: 'kompakt', stripMetadata: false })
+    const stripped = await compressPdfBytes(sample, { level: 'kompakt', stripMetadata: true })
     const keptDoc = await PDFDocument.load(kept.bytes, { updateMetadata: false })
     const strippedDoc = await PDFDocument.load(stripped.bytes, { updateMetadata: false })
     expect(keptDoc.getTitle()).toBe('Beispiel')
@@ -71,7 +71,7 @@ describe('compressPdfBytes', () => {
   })
 
   it.skipIf(!hasQpdf)('erzeugt ein Ergebnis, das qpdf als in Ordnung prüft', async () => {
-    const { bytes } = await compressPdfBytes(sample, { dpi: 150, quality: 70, stripMetadata: true })
+    const { bytes } = await compressPdfBytes(sample, { level: 'kompakt', stripMetadata: true })
     const file = join(workDir, 'ergebnis.pdf')
     writeFileSync(file, bytes)
     const output = execFileSync('qpdf', ['--check', file], { encoding: 'utf8' })
@@ -84,14 +84,14 @@ describe('compressPdfBytes', () => {
     writeFileSync(plain, sample)
     execFileSync('qpdf', ['--encrypt', 'user', 'owner', '256', '--', plain, locked])
     const bytes = new Uint8Array(readFileSync(locked))
-    await expect(compressPdfBytes(bytes, { dpi: 150, quality: 70, stripMetadata: false })).rejects.toMatchObject({
+    await expect(compressPdfBytes(bytes, { level: 'kompakt', stripMetadata: false })).rejects.toMatchObject({
       code: 'password'
     })
   })
 
   it('meldet kaputte Dateien als nicht lesbar', async () => {
     const broken = new TextEncoder().encode('das ist kein pdf')
-    const error = await compressPdfBytes(broken, { dpi: 150, quality: 70, stripMetadata: false }).catch((e: unknown) => e)
+    const error = await compressPdfBytes(broken, { level: 'kompakt', stripMetadata: false }).catch((e: unknown) => e)
     expect(error).toBeInstanceOf(EngineError)
     expect((error as EngineError).code).toBe('unreadable')
   })
@@ -100,13 +100,13 @@ describe('compressPdfBytes', () => {
     const controller = new AbortController()
     controller.abort()
     await expect(
-      compressPdfBytes(sample, { dpi: 150, quality: 70, stripMetadata: false }, { signal: controller.signal })
+      compressPdfBytes(sample, { level: 'kompakt', stripMetadata: false }, { signal: controller.signal })
     ).rejects.toBeInstanceOf(CancelledError)
   })
 
   it('meldet Fortschritt in steigender Reihenfolge', async () => {
     const seen: number[] = []
-    await compressPdfBytes(sample, { dpi: 150, quality: 70, stripMetadata: false }, { onProgress: (fraction) => seen.push(fraction) })
+    await compressPdfBytes(sample, { level: 'kompakt', stripMetadata: false }, { onProgress: (fraction) => seen.push(fraction) })
     expect(seen.length).toBeGreaterThan(3)
     expect([...seen].sort((a, b) => a - b)).toEqual(seen)
     expect(seen.at(-1)).toBe(1)

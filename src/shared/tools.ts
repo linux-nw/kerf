@@ -24,10 +24,10 @@ export const TOOLS: ToolMeta[] = [
     id: 'compress',
     label: 'Komprimieren',
     title: 'Komprimieren',
-    subtitle: 'PDFs, Bilder und Office-Dateien verkleinern.',
+    subtitle: 'PDFs, Bilder und Dokumente verkleinern.',
     group: 'tools',
-    accept: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'avif', 'docx', 'pptx', 'xlsx'],
-    acceptLabel: 'PDF, Bilder, DOCX, PPTX, XLSX'
+    accept: ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'avif', 'gif', 'tif', 'tiff', 'svg', 'docx', 'pptx', 'xlsx', 'odt', 'odp', 'ods', 'epub'],
+    acceptLabel: 'PDF, Bilder, SVG, Office, ODF, EPUB'
   },
   {
     id: 'convert',

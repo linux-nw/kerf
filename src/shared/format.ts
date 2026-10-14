@@ -28,12 +28,3 @@ export function formatPercent(before: number, after: number): string {
   if (percent < 0) return `${MINUS}${Math.abs(percent)}${NBSP}%`
   return `+${percent}${NBSP}%`
 }
-
-export function parseTargetBytes(value: string, unit: 'KB' | 'MB'): number | null {
-  const normalized = value.trim().replace(',', '.')
-  if (!/^\d+(\.\d+)?$/.test(normalized)) return null
-  const amount = Number(normalized)
-  if (!Number.isFinite(amount) || amount <= 0) return null
-  const factor = unit === 'MB' ? 1024 * 1024 : 1024
-  return Math.round(amount * factor)
-}

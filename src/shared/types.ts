@@ -1,6 +1,6 @@
 import type { ToolId } from './tools'
 
-export type PresetId = 'email' | 'standard' | 'print' | 'target'
+export type PresetId = 'kompakt' | 'winzig'
 
 export interface FileInfo {
   id: string
@@ -76,7 +76,6 @@ export interface BlobInput {
 
 export interface CompressOptions {
   preset: PresetId
-  targetBytes: number | null
   stripMetadata: boolean
   outputDir: string | null
 }

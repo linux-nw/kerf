@@ -12,18 +12,24 @@ import {
 } from 'pdf-lib'
 import sharp from 'sharp'
 import { CancelledError, EngineError } from '../../errors'
+import { lowestAcceptableQuality, ssimLuma } from '../image/perceptual'
+import { optimizeStructure } from './optimize'
+import { LEVELS, type CompressLevel, type LevelProfile } from './profiles'
 
 export { CancelledError, EngineError }
 
 export interface PdfCompressSettings {
-  dpi: number
-  quality: number
+  level: CompressLevel
   stripMetadata: boolean
 }
 
 export interface PdfCompressStats {
   images: number
   recompressed: number
+  grayscale: number
+  bilevel: number
+  structure: boolean
+  fontsSubset: boolean
 }
 
 export interface PdfCompressHooks {
@@ -43,6 +49,7 @@ interface ImageDescription {
   filter: 'raw' | 'flate' | 'dct'
   predictor: number
   hasSoftMask: boolean
+  hasDecode: boolean
 }
 
 const name = (value: string) => PDFName.of(value)
@@ -160,7 +167,7 @@ function describeImage(doc: PDFDocument, stream: PDFRawStream): ImageDescription
   if (softMask instanceof PDFRawStream && softMask.dict.get(name('Matte')) !== undefined) return null
 
   if (filter === 'DCTDecode') {
-    return { width, height, components, filter: 'dct', predictor: 1, hasSoftMask: softMask !== undefined }
+    return { width, height, components, filter: 'dct', predictor: 1, hasSoftMask: softMask !== undefined, hasDecode: lookup('Decode') !== undefined }
   }
   if (filter !== undefined && filter !== 'FlateDecode') return null
   const bits = asNumber(lookup('BitsPerComponent'))
@@ -173,7 +180,8 @@ function describeImage(doc: PDFDocument, stream: PDFRawStream): ImageDescription
     components,
     filter: filter === 'FlateDecode' ? 'flate' : 'raw',
     predictor,
-    hasSoftMask: softMask !== undefined
+    hasSoftMask: softMask !== undefined,
+    hasDecode: lookup('Decode') !== undefined
   }
 }
 
@@ -251,43 +259,132 @@ interface Replacement {
   filter: 'DCTDecode' | 'FlateDecode'
   width: number
   height: number
+  components: 1 | 3
+  bits: 1 | 8
+  deviceGray: boolean
   predictorColumns: number | null
+}
+
+const NEUTRAL_TOLERANCE = 2
+
+function isNeutral(data: Uint8Array): boolean {
+  for (let index = 0; index + 2 < data.length; index += 3) {
+    const red = data[index] ?? 0
+    const green = data[index + 1] ?? 0
+    const blue = data[index + 2] ?? 0
+    if (Math.abs(red - green) > NEUTRAL_TOLERANCE || Math.abs(green - blue) > NEUTRAL_TOLERANCE || Math.abs(red - blue) > NEUTRAL_TOLERANCE) return false
+  }
+  return true
+}
+
+function toGray(data: Uint8Array): Buffer {
+  const output = Buffer.alloc(Math.floor(data.length / 3))
+  for (let index = 0; index < output.length; index += 1) {
+    output[index] = Math.round(((data[index * 3] ?? 0) + (data[index * 3 + 1] ?? 0) + (data[index * 3 + 2] ?? 0)) / 3)
+  }
+  return output
+}
+
+function isBilevel(data: Uint8Array): boolean {
+  for (let index = 0; index < data.length; index += 1) {
+    const value = data[index]
+    if (value !== 0 && value !== 255) return false
+  }
+  return true
+}
+
+export function packBits(gray: Uint8Array, width: number, height: number): Buffer {
+  const rowBytes = Math.ceil(width / 8)
+  const output = Buffer.alloc(rowBytes * height)
+  for (let row = 0; row < height; row += 1) {
+    for (let column = 0; column < width; column += 1) {
+      if ((gray[row * width + column] ?? 0) > 127) {
+        const target = row * rowBytes + (column >> 3)
+        output[target] = (output[target] ?? 0) | (0x80 >> (column & 7))
+      }
+    }
+  }
+  return output
+}
+
+async function encodeJpegAdaptive(pixels: Uint8Array, width: number, height: number, channels: 1 | 3, profile: LevelProfile): Promise<Buffer> {
+  const raw = { raw: { width, height, channels } }
+  const subsampling = channels === 3 ? '4:2:0' : '4:4:4'
+  const source = () => (channels === 1 ? sharp(pixels, raw).toColourspace('b-w') : sharp(pixels, raw))
+  const encode = async (quality: number): Promise<Buffer> =>
+    source().jpeg({ quality, mozjpeg: true, chromaSubsampling: subsampling }).toBuffer()
+  if (!profile.perceptual) return encode(profile.pdfQuality)
+
+  const reference =
+    channels === 1 ? Buffer.from(pixels) : await sharp(pixels, raw).greyscale().raw().toBuffer()
+  const result = await lowestAcceptableQuality(
+    {
+      encode,
+      similarity: async (encoded) => {
+        const decoded = await sharp(encoded, { failOn: 'none' }).keepIccProfile().greyscale().raw().toBuffer()
+        return ssimLuma(reference, decoded, width, height)
+      }
+    },
+    profile.pdfQuality,
+    profile.minQuality,
+    profile.minSimilarity
+  )
+  return Buffer.from(result.bytes)
 }
 
 async function replaceDct(
   stream: PDFRawStream,
   description: ImageDescription,
   maxPixels: number,
-  quality: number
+  profile: LevelProfile
 ): Promise<Replacement | null> {
   const original = Buffer.from(stream.contents)
   const meta = await sharp(original, { failOn: 'none' }).metadata()
   if (!meta.width || !meta.height || (meta.channels !== 1 && meta.channels !== 3)) return null
   if (meta.channels !== description.components) return null
   const size = scaledSize(meta.width, meta.height, maxPixels)
-  let pipeline = sharp(original, { failOn: 'none' })
-  if (size.width !== meta.width) pipeline = pipeline.resize(size.width, size.height, { fit: 'fill', kernel: 'lanczos3' })
-  const encoded = await pipeline
-    .keepIccProfile()
-    .jpeg({ quality, mozjpeg: true, chromaSubsampling: meta.channels === 3 ? '4:2:0' : '4:4:4' })
-    .toBuffer()
+  let pipeline = sharp(original, { failOn: 'none' }).keepIccProfile()
+  if (size.width !== meta.width || size.height !== meta.height) pipeline = pipeline.resize(size.width, size.height, { fit: 'fill', kernel: 'lanczos3' })
+  if (description.components === 1) pipeline = pipeline.toColourspace('b-w')
+  const decoded = await pipeline.raw().toBuffer({ resolveWithObject: true })
+  if (decoded.info.channels !== description.components) return null
+
+  let pixels: Uint8Array = decoded.data
+  let channels: 1 | 3 = description.components
+  let deviceGray = false
+  if (profile.detectGray && channels === 3 && !description.hasDecode && isNeutral(pixels)) {
+    pixels = toGray(pixels)
+    channels = 1
+    deviceGray = true
+  }
+  const encoded = await encodeJpegAdaptive(pixels, decoded.info.width, decoded.info.height, channels, profile)
   if (encoded.length >= original.length * 0.92) return null
-  return { bytes: encoded, filter: 'DCTDecode', width: size.width, height: size.height, predictorColumns: null }
+  return {
+    bytes: encoded,
+    filter: 'DCTDecode',
+    width: decoded.info.width,
+    height: decoded.info.height,
+    components: channels,
+    bits: 8,
+    deviceGray,
+    predictorColumns: null
+  }
 }
 
 async function replaceFlate(
   stream: PDFRawStream,
   description: ImageDescription,
   maxPixels: number,
-  quality: number
+  profile: LevelProfile
 ): Promise<Replacement | null> {
-  const { width, height, components } = description
-  const rowBytes = width * components
+  const { width, height } = description
+  let channels: 1 | 3 = description.components
+  const rowBytes = width * channels
   let raw: Buffer
   try {
     const inflated = description.filter === 'flate' ? inflateSync(Buffer.from(stream.contents)) : Buffer.from(stream.contents)
     if (description.predictor >= 10) {
-      const plain = unfilterPng(inflated, rowBytes, components, height)
+      const plain = unfilterPng(inflated, rowBytes, channels, height)
       if (!plain) return null
       raw = plain
     } else {
@@ -299,43 +396,71 @@ async function replaceFlate(
   if (raw.length !== rowBytes * height) return null
   if (raw.length < 12 * 1024) return null
 
-  const size = scaledSize(width, height, maxPixels)
-  let pipeline = sharp(raw, { raw: { width, height, channels: components } })
-  if (size.width !== width) pipeline = pipeline.resize(size.width, size.height, { fit: 'fill', kernel: 'lanczos3' })
+  let deviceGray = false
+  if (profile.detectGray && channels === 3 && !description.hasDecode && isNeutral(raw)) {
+    raw = toGray(raw)
+    channels = 1
+    deviceGray = true
+  }
 
-  const { data: pixels, info } = await pipeline.clone().raw().toBuffer({ resolveWithObject: true })
-  const newRowBytes = info.width * components
+  if (profile.detectBilevel && channels === 1 && isBilevel(raw)) {
+    const packed = packBits(raw, width, height)
+    const packedRow = Math.ceil(width / 8)
+    const plain = deflateSync(packed, { level: 9 })
+    const predicted = deflateSync(filterPngUp(packed, packedRow, height), { level: 9 })
+    const usesPredictor = predicted.length < plain.length
+    const bytes = usesPredictor ? predicted : plain
+    if (bytes.length >= stream.contents.length * 0.95) return null
+    return { bytes, filter: 'FlateDecode', width, height, components: 1, bits: 1, deviceGray, predictorColumns: usesPredictor ? width : null }
+  }
+
+  const size = scaledSize(width, height, maxPixels)
+  let pipeline = sharp(raw, { raw: { width, height, channels } })
+  if (size.width !== width || size.height !== height) pipeline = pipeline.resize(size.width, size.height, { fit: 'fill', kernel: 'lanczos3' })
+  if (channels === 1) pipeline = pipeline.toColourspace('b-w')
+
+  const { data: pixels, info } = await pipeline.raw().toBuffer({ resolveWithObject: true })
+  if (info.channels !== channels) return null
+  const newRowBytes = info.width * channels
   const plain = deflateSync(pixels, { level: 9 })
   const predicted = deflateSync(filterPngUp(pixels, newRowBytes, info.height), { level: 9 })
   const lossless = predicted.length < plain.length ? predicted : plain
   const usesPredictor = predicted.length < plain.length
 
-  const jpeg = await pipeline
-    .jpeg({ quality, mozjpeg: true, chromaSubsampling: components === 3 ? '4:2:0' : '4:4:4' })
-    .toBuffer()
+  const jpeg = await encodeJpegAdaptive(pixels, info.width, info.height, channels, profile)
 
   const jpegWins = jpeg.length < lossless.length * 0.6
   const bytes = jpegWins ? jpeg : lossless
   if (bytes.length >= stream.contents.length * 0.95) return null
   return jpegWins
-    ? { bytes, filter: 'DCTDecode', width: info.width, height: info.height, predictorColumns: null }
-    : { bytes, filter: 'FlateDecode', width: info.width, height: info.height, predictorColumns: usesPredictor ? info.width : null }
+    ? { bytes, filter: 'DCTDecode', width: info.width, height: info.height, components: channels, bits: 8, deviceGray, predictorColumns: null }
+    : {
+        bytes,
+        filter: 'FlateDecode',
+        width: info.width,
+        height: info.height,
+        components: channels,
+        bits: 8,
+        deviceGray,
+        predictorColumns: usesPredictor ? info.width : null
+      }
 }
 
-function applyReplacement(doc: PDFDocument, ref: PDFRef, stream: PDFRawStream, replacement: Replacement, components: number): void {
+function applyReplacement(doc: PDFDocument, ref: PDFRef, stream: PDFRawStream, replacement: Replacement): void {
   const dict = stream.dict
   dict.set(name('Width'), PDFNumber.of(replacement.width))
   dict.set(name('Height'), PDFNumber.of(replacement.height))
-  dict.set(name('BitsPerComponent'), PDFNumber.of(8))
+  dict.set(name('BitsPerComponent'), PDFNumber.of(replacement.bits))
   dict.set(name('Filter'), name(replacement.filter))
   dict.delete(name('DecodeParms'))
+  if (replacement.deviceGray) dict.set(name('ColorSpace'), name('DeviceGray'))
   if (replacement.filter === 'FlateDecode' && replacement.predictorColumns !== null) {
     dict.set(
       name('DecodeParms'),
       doc.context.obj({
         Predictor: 15,
-        Colors: components,
-        BitsPerComponent: 8,
+        Colors: replacement.components,
+        BitsPerComponent: replacement.bits,
         Columns: replacement.predictorColumns
       })
     )
@@ -355,6 +480,7 @@ export async function compressPdfBytes(
   hooks: PdfCompressHooks = {}
 ): Promise<{ bytes: Uint8Array; stats: PdfCompressStats }> {
   const { onProgress, signal } = hooks
+  const profile = LEVELS[settings.level]
   onProgress?.(0.02, 'Datei wird gelesen')
 
   let doc: PDFDocument
@@ -366,12 +492,12 @@ export async function compressPdfBytes(
   }
   throwIfCancelled(signal)
 
-  const targets = [...collectImageTargets(doc, settings.dpi).values()]
-  const stats: PdfCompressStats = { images: targets.length, recompressed: 0 }
+  const targets = [...collectImageTargets(doc, profile.pdfDpi).values()]
+  const stats: PdfCompressStats = { images: targets.length, recompressed: 0, grayscale: 0, bilevel: 0, structure: false, fontsSubset: false }
 
   for (const [index, target] of targets.entries()) {
     throwIfCancelled(signal)
-    onProgress?.(0.05 + 0.85 * (index / Math.max(1, targets.length)), 'Bilder werden gerechnet')
+    onProgress?.(0.05 + 0.75 * (index / Math.max(1, targets.length)), 'Bilder werden gerechnet')
     const stream = doc.context.lookup(target.ref)
     if (!(stream instanceof PDFRawStream)) continue
     const description = describeImage(doc, stream)
@@ -379,11 +505,13 @@ export async function compressPdfBytes(
     try {
       const replacement =
         description.filter === 'dct'
-          ? await replaceDct(stream, description, target.maxPixels, settings.quality)
-          : await replaceFlate(stream, description, target.maxPixels, settings.quality)
+          ? await replaceDct(stream, description, target.maxPixels, profile)
+          : await replaceFlate(stream, description, target.maxPixels, profile)
       if (!replacement) continue
-      applyReplacement(doc, target.ref, stream, replacement, description.components)
+      applyReplacement(doc, target.ref, stream, replacement)
       stats.recompressed += 1
+      if (replacement.deviceGray) stats.grayscale += 1
+      if (replacement.bits === 1) stats.bilevel += 1
     } catch (error) {
       if (error instanceof CancelledError) throw error
       continue
@@ -391,9 +519,26 @@ export async function compressPdfBytes(
   }
 
   throwIfCancelled(signal)
-  onProgress?.(0.92, 'Datei wird geschrieben')
-  if (settings.stripMetadata) stripMetadata(doc)
-  const bytes = await doc.save({ useObjectStreams: true, addDefaultPage: false, updateFieldAppearances: false })
+  let staged: Uint8Array = input
+  if (stats.recompressed > 0 || settings.stripMetadata) {
+    onProgress?.(0.82, 'Zwischenstand wird geschrieben')
+    if (settings.stripMetadata) stripMetadata(doc)
+    staged = await doc.save({ useObjectStreams: true, addDefaultPage: false, updateFieldAppearances: false })
+  }
+
+  throwIfCancelled(signal)
+  onProgress?.(0.88, 'Schriften und Struktur werden optimiert')
+  let bytes = staged
+  try {
+    const structure = await optimizeStructure(staged, { subsetFonts: profile.subsetFonts, effort: profile.effort, signal })
+    if (structure && structure.bytes.length < staged.length) {
+      bytes = structure.bytes
+      stats.structure = true
+      stats.fontsSubset = structure.fontsSubset
+    }
+  } catch (error) {
+    if (error instanceof CancelledError) throw error
+  }
   onProgress?.(1, 'Fertig')
   return { bytes, stats }
 }

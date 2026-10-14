@@ -10,7 +10,7 @@ import { createCompressTool, type CompressFn } from '../src/main/tools/compress'
 import type { ToolContext, ToolRunner } from '../src/main/tools/types'
 import type { CompressOptions, JobUpdate } from '../src/shared/types'
 
-const baseOptions: CompressOptions = { preset: 'standard', targetBytes: null, stripMetadata: false, outputDir: null }
+const baseOptions: CompressOptions = { preset: 'kompakt', stripMetadata: false, outputDir: null }
 
 let dir: string
 let original: string
@@ -27,7 +27,7 @@ function fakeCompress(sizes: number[]): CompressFn {
     hooks.onProgress?.(0.5, 'Bilder werden gerechnet')
     const size = sizes[Math.min(call, sizes.length - 1)] ?? 0
     call += 1
-    return { bytes: new Uint8Array(size), stats: { images: 1, recompressed: 1 } }
+    return { bytes: new Uint8Array(size), stats: { images: 1, recompressed: 1, grayscale: 0, bilevel: 0, structure: false, fontsSubset: false } }
   }
 }
 
@@ -124,24 +124,6 @@ describe('Komprimieren-Werkzeug im JobRunner', () => {
     }
     const { updates } = await run(baseOptions, cancelling)
     expect(updates.at(-1)?.status).toBe('cancelled')
-  })
-
-  it('sucht im Zielgrößen-Modus die erste Stufe, die reicht', async () => {
-    const options: CompressOptions = { ...baseOptions, preset: 'target', targetBytes: 5_000 }
-    const { updates } = await run(options, fakeCompress([9_000, 7_000, 4_000, 3_000]))
-    const last = updates.at(-1)
-    expect(last?.status).toBe('done')
-    expect(last?.outputSize).toBe(4_000)
-    expect(last?.detail).toBeNull()
-  })
-
-  it('weist im Zielgrößen-Modus auf ein verfehltes Ziel hin und behält das beste Ergebnis', async () => {
-    const options: CompressOptions = { ...baseOptions, preset: 'target', targetBytes: 100 }
-    const { updates } = await run(options, fakeCompress([9_000, 8_000, 7_000, 6_000, 5_000, 4_000, 3_000]))
-    const last = updates.at(-1)
-    expect(last?.status).toBe('done')
-    expect(last?.outputSize).toBe(3_000)
-    expect(last?.detail).toBe('Zielgröße nicht erreicht')
   })
 })
 

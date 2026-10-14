@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatBytes, formatPercent, parseTargetBytes, savedPercent } from '../src/shared/format'
+import { formatBytes, formatPercent, savedPercent } from '../src/shared/format'
 
 const nbsp = ' '
 const minus = '−'
@@ -40,20 +40,5 @@ describe('formatPercent', () => {
 
   it('schützt vor Division durch null', () => {
     expect(savedPercent(0, 10)).toBe(0)
-  })
-})
-
-describe('parseTargetBytes', () => {
-  it('liest Zahlen mit Punkt oder Komma', () => {
-    expect(parseTargetBytes('500', 'KB')).toBe(500 * 1024)
-    expect(parseTargetBytes('1,5', 'MB')).toBe(Math.round(1.5 * 1024 * 1024))
-    expect(parseTargetBytes('2.5', 'MB')).toBe(Math.round(2.5 * 1024 * 1024))
-  })
-
-  it('lehnt Unsinn ab', () => {
-    expect(parseTargetBytes('', 'KB')).toBeNull()
-    expect(parseTargetBytes('abc', 'KB')).toBeNull()
-    expect(parseTargetBytes('0', 'KB')).toBeNull()
-    expect(parseTargetBytes('-4', 'MB')).toBeNull()
   })
 })

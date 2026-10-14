@@ -10,7 +10,14 @@ Kerf heißt die Schnittbreite einer Säge, also das Material, das beim Schneiden
 
 ## Was Kerf kann
 
-**Komprimieren.** PDF, JPG, PNG, WebP, AVIF, Video und Audio verkleinern. Presets für E-Mail, Standard und Druck, außerdem ein Zielgrößen-Modus. In jeder Zeile steht nur die Änderung in Prozent, der Rest bleibt im Verlauf.
+**Komprimieren.** PDF, Bilder (JPG, PNG, WebP, AVIF, GIF, TIFF, SVG), Office-Dateien (DOCX, PPTX, XLSX), OpenDocument (ODT, ODP, ODS) und EPUB verkleinern, dazu Video und Audio. Es gibt zwei Stufen:
+
+- **Kompakt** arbeitet wie die üblichen Programme: Bilder auf etwa 150 dpi und JPEG-Qualität 78, dazu die verlustfreie Aufräumarbeit unten.
+- **Winzig** holt heraus, was technisch geht, ohne dass man es sieht. Für jedes Bild sucht Kerf die niedrigste Qualität, bei der die gemessene Ähnlichkeit zum Original (SSIM auf der Helligkeit) über 0,94 bleibt, und geht nie über die Qualität von Kompakt hinaus. Neutral graue RGB-Bilder werden als Graustufen gespeichert, reine Schwarz-Weiß-Bilder mit einem Bit pro Punkt.
+
+Verlustfrei, in beiden Stufen: Schriften auf die genutzten Zeichen kürzen, doppelte Objekte und Schriften zusammenfassen, unbenutzte Objekte entfernen, alle Streams mit Flate Stufe 9 neu packen, Objektströme. Nach dem Umbau rendert Kerf Seiten vorher und nachher und vergleicht Bild und Text. Weicht etwas ab, nimmt es die vorsichtigere Variante oder lässt die Struktur unangetastet. Brotli-Kompression gibt es bewusst nicht, weil viele Programme solche PDFs nicht lesen können.
+
+Bei DOCX, PPTX, XLSX, ODF und EPUB werden alle eingebetteten Bilder neu gerechnet (BMP wird in PNG gewandelt), Vorschaubilder und die XLSX-Rechenkette entfernt und alle Teile mit Stufe 9 gepackt. Die Verweise im Paket werden dabei mitgepflegt.
 
 **Konvertieren.** Bilder (inklusive ICO mit mehreren Größen und Favicon-Set, HEIC), Office-Dateien nach PDF, PDF nach Bild, Text, Markdown, Daten, Audio und Video. Office nach PDF läuft über Microsoft Office, sonst LibreOffice, sonst über eine vereinfachte eingebaute Darstellung für DOCX und XLSX.
 
@@ -34,7 +41,7 @@ Der ursprüngliche Plan mit Stufen steht in [`design-system/modules.md`](design-
 
 1. Alles bleibt lokal. Die App blockiert Netzwerkzugriffe und zeigt das auf jedem Screen an. Die einzige Ausnahme ist die ausdrücklich eingeschaltete KI-Aufbereitung, und sie darf nur mit Adressen auf diesem Rechner oder im eigenen Netzwerk sprechen.
 2. Originale werden nie überschrieben.
-3. Die Verarbeitung läuft in der App selbst oder über bewährte Programme (LibreOffice, FFmpeg, Pandoc, Tesseract), die mit der App ausgeliefert werden. Die Engines sind JavaScript-Bibliotheken (pdf-lib, pdf.js, sharp, tesseract.js) plus mitgelieferte Programme (7-Zip, FFmpeg). LibreOffice und Microsoft Office werden nur genutzt, wenn sie installiert sind.
+3. Die Verarbeitung läuft in der App selbst oder über bewährte Programme (LibreOffice, FFmpeg, Pandoc, Tesseract), die mit der App ausgeliefert werden. Die Engines sind JavaScript-Bibliotheken (pdf-lib, pdf.js, MuPDF als WebAssembly, sharp, svgo, tesseract.js) plus mitgelieferte Programme (7-Zip, FFmpeg). LibreOffice und Microsoft Office werden nur genutzt, wenn sie installiert sind.
 4. Einfach bedienbar: Dateien ablegen, Preset wählen, starten.
 
 ## Technik
@@ -42,10 +49,10 @@ Der ursprüngliche Plan mit Stufen steht in [`design-system/modules.md`](design-
 - Electron, React 19 und TypeScript, gebaut mit electron-vite
 - Netzwerk ist doppelt gesperrt: Content-Security-Policy im Fenster und ein Filter im Hauptprozess, der jede nicht lokale Anfrage abbricht und zählt
 - Fenster mit `contextIsolation` und `sandbox`, die Oberfläche hat keinen Zugriff auf Node
-- PDF-Kompression läuft in einem Worker-Thread, damit die Oberfläche flüssig bleibt, und lässt sich abbrechen
+- PDF-Kompression läuft in einem Worker-Thread, damit die Oberfläche flüssig bleibt, und lässt sich abbrechen. Bilder tauscht pdf-lib mit sharp, Schriften und Struktur räumt MuPDF auf
 - Schriften (IBM Plex) und alle Ressourcen liegen in der App
 
-Offen ist die Lizenz. Weil FFmpeg und 7-Zip ausgeliefert werden, beeinflusst das (A)GPL, wie Kerf verteilt werden darf.
+Offen ist die Lizenz. Weil FFmpeg, 7-Zip und MuPDF (AGPL-3.0) ausgeliefert werden, beeinflusst das (A)GPL, wie Kerf verteilt werden darf.
 
 ## Ausprobieren
 

@@ -5,10 +5,11 @@ import { extensionOf } from '@shared/tools'
 import type { CompressOptions } from '@shared/types'
 import { CancelledError, EngineError } from '../errors'
 import type { PdfCompressHooks, PdfCompressSettings, PdfCompressStats } from '../engines/pdf/compress'
-import { compressImageBytes, IMAGE_LADDER, IMAGE_PRESETS } from '../engines/image/compress'
-import { compressOfficeBytes } from '../engines/office/compress'
+import { compressImageBytes, IMAGE_EXTENSIONS } from '../engines/image/compress'
+import { compressSvgBytes } from '../engines/image/svg'
+import { compressZipDocumentBytes, ZIP_DOCUMENT_EXTENSIONS } from '../engines/office/compress'
 import { decideOutcome, nextOutputPath } from '../engines/pdf/output'
-import { PRESETS, TARGET_LADDER, type Attempt } from '../engines/pdf/presets'
+import type { CompressLevel } from '../engines/pdf/profiles'
 import { withDefaults, type ToolOutcome, type ToolRunner } from './types'
 
 export type CompressFn = (
@@ -17,19 +18,22 @@ export type CompressFn = (
   hooks: PdfCompressHooks
 ) => Promise<{ bytes: Uint8Array; stats: PdfCompressStats }>
 
-const defaults: CompressOptions = { preset: 'standard', targetBytes: null, stripMetadata: false, outputDir: null }
+const defaults: CompressOptions = { preset: 'kompakt', stripMetadata: false, outputDir: null }
 
-const OFFICE = new Set(['docx', 'pptx', 'xlsx'])
-const IMAGES = new Set(['jpg', 'jpeg', 'png', 'webp', 'avif'])
+type Kind = 'pdf' | 'zipdoc' | 'image' | 'svg'
 
-function attemptsFor(options: CompressOptions, ladder: Attempt[], presets: Record<'email' | 'standard' | 'print', Attempt>): Attempt[] {
-  if (options.preset === 'target') return options.targetBytes ? ladder : [presets.standard]
-  return [presets[options.preset]]
+function kindOf(extension: string): Kind | null {
+  if (extension === 'pdf') return 'pdf'
+  if (extension === 'svg') return 'svg'
+  if (ZIP_DOCUMENT_EXTENSIONS.has(extension)) return 'zipdoc'
+  if (IMAGE_EXTENSIONS.has(extension)) return 'image'
+  return null
 }
 
 export function createCompressTool(compressPdf: CompressFn): ToolRunner {
   return async (job, rawOptions, ctx) => {
     const options = withDefaults(defaults, rawOptions)
+    const level: CompressLevel = options.preset === 'winzig' ? 'winzig' : 'kompakt'
     const path = job.paths[0]
     if (!path) throw new EngineError('missing', 'Keine Datei angegeben')
     const extension = extensionOf(path)
@@ -41,43 +45,24 @@ export function createCompressTool(compressPdf: CompressFn): ToolRunner {
       throw new EngineError('missing', 'Die Datei wurde nicht gefunden')
     }
 
-    const kind = extension === 'pdf' ? 'pdf' : OFFICE.has(extension) ? 'office' : IMAGES.has(extension) ? 'image' : null
+    const kind = kindOf(extension)
     if (!kind) throw new EngineError('unsupported', `Dateityp .${extension} wird nicht unterstützt`)
+    if (ctx.signal.aborted) throw new CancelledError()
 
-    const ladder = kind === 'image' || kind === 'office' ? IMAGE_LADDER : TARGET_LADDER
-    const presets = kind === 'image' || kind === 'office' ? IMAGE_PRESETS : PRESETS
-    const attempts = attemptsFor(options, ladder, presets)
-    const wantsTarget = options.preset === 'target' && options.targetBytes !== null
-    let best: Uint8Array | null = null
-    let reached = false
-
-    for (const [index, attempt] of attempts.entries()) {
-      if (ctx.signal.aborted) throw new CancelledError()
-      const report = (fraction: number, step: string) => {
-        const percent = ((index + fraction) / attempts.length) * 100
-        ctx.progress(percent, attempts.length > 1 ? `${step} (Versuch ${index + 1} von ${attempts.length})` : step)
-      }
-      if (kind === 'pdf') {
-        const result = await compressPdf(
-          input,
-          { dpi: attempt.dpi, quality: attempt.quality, stripMetadata: options.stripMetadata },
-          { signal: ctx.signal, onProgress: report }
-        )
-        best = result.bytes
-      } else if (kind === 'image') {
-        best = await compressImageBytes(input, extension, attempt, options.stripMetadata)
-        report(1, 'Bild wird gerechnet')
-      } else {
-        best = await compressOfficeBytes(input, attempt, report, ctx.signal)
-      }
-      if (wantsTarget && options.targetBytes !== null && best.length <= options.targetBytes) {
-        reached = true
-        break
-      }
-      if (!wantsTarget) break
+    const report = (fraction: number, step: string) => ctx.progress(fraction * 100, step)
+    let best: Uint8Array
+    if (kind === 'pdf') {
+      const result = await compressPdf(input, { level, stripMetadata: options.stripMetadata }, { signal: ctx.signal, onProgress: report })
+      best = result.bytes
+    } else if (kind === 'image') {
+      best = await compressImageBytes(input, extension, level, options.stripMetadata)
+      report(1, 'Bild wird gerechnet')
+    } else if (kind === 'svg') {
+      best = compressSvgBytes(input, level)
+      report(1, 'SVG wird gekürzt')
+    } else {
+      best = await compressZipDocumentBytes(input, level, report, ctx.signal)
     }
-
-    if (!best) throw new EngineError('unknown', 'Kein Ergebnis erzeugt')
 
     const outcome = decideOutcome(input.length, best.length)
     if (outcome !== 'done') {
@@ -94,7 +79,7 @@ export function createCompressTool(compressPdf: CompressFn): ToolRunner {
         status: 'done',
         outputs: [outputPath],
         outputSize: best.length,
-        detail: wantsTarget && !reached ? 'Zielgröße nicht erreicht' : null,
+        detail: null,
         summary: 'Komprimiert'
       }
       return result
